@@ -14,7 +14,7 @@
   <!-- SheetJS para exportar a Excel real (.xlsx) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
-  <!-- Mapa de Importación para React y Lucide Icons (Permite usarlos en HTML sin NodeJS) -->
+  <!-- Mapa de Importación para React y Lucide Icons -->
   <script type="importmap">
   {
     "imports": {
@@ -26,7 +26,6 @@
   </script>
   
   <style>
-    /* Animación simple para los formularios y alertas */
     @keyframes fadeIn {
       from { opacity: 0; transform: translateY(10px); }
       to { opacity: 1; transform: translateY(0); }
@@ -34,24 +33,32 @@
     .animate-fade-in {
       animation: fadeIn 0.3s ease-out forwards;
     }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background-color: #cbd5e1;
+      border-radius: 10px;
+    }
   </style>
 </head>
 <body class="bg-slate-50 font-sans text-slate-800">
   
   <div id="root"></div>
 
-  <!-- Script principal de la Aplicación -->
   <script type="text/babel" data-type="module">
-    import React, { useState, useEffect, useMemo } from 'react';
+    import React, { useState, useEffect, useMemo, useRef } from 'react';
     import { createRoot } from 'react-dom/client';
-    import { LayoutDashboard, Users, UserPlus, MessageCircle, Phone, Search, Filter, Sparkles, Save, ChevronRight, ArrowLeft, CheckCircle2, AlertCircle, XCircle, Clock, Edit2, Trash2, Archive, Database, Download } from 'lucide-react';
+    import { LayoutDashboard, Users, UserPlus, MessageCircle, Phone, Search, Filter, Save, ChevronRight, ArrowLeft, CheckCircle2, AlertCircle, XCircle, Clock, Edit2, Trash2, Archive, Database, Download, Send, User, MessageSquare } from 'lucide-react';
     
     // --- INTEGRACIÓN DE FIREBASE ---
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
     import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
     import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
-    // Configuración proporcionada por el usuario
     const firebaseConfig = {
       apiKey: "AIzaSyBv_sA7DuRKtbDMjDZJSVgzKdMU0YPzGFM",
       authDomain: "retencion-47a35.firebaseapp.com",
@@ -86,6 +93,7 @@
 
     const STATUSES = ['Solicitud de baja', 'En seguimiento', 'Retenido', 'Baja definitiva'];
     const REASONS = ['Económico', 'Falta de tiempo / Horarios', 'Laboral', 'Académico', 'Personal / Salud', 'Otro'];
+    const STUDENT_TYPES = ['Ingresante', 'No inicio', 'No continua'];
 
     // --- COMPONENTE PRINCIPAL (APP) ---
     function App() {
@@ -95,7 +103,6 @@
       const [user, setUser] = useState(null);
       const [loading, setLoading] = useState(true);
 
-      // 1. Iniciar sesión anónima en Firebase
       useEffect(() => {
         const initAuth = async () => {
           try {
@@ -109,9 +116,8 @@
         return () => unsubscribe();
       }, []);
 
-      // 2. Escuchar datos en tiempo real desde Firestore
       useEffect(() => {
-        if (!user) return; // Esperar a que esté autenticado
+        if (!user) return; 
 
         const casesRef = collection(db, 'casos');
         const unsubscribe = onSnapshot(casesRef, (snapshot) => {
@@ -120,7 +126,6 @@
             ...doc.data()
           }));
           
-          // Ordenar del más reciente al más antiguo lógicamente
           data.sort((a, b) => {
             const numA = parseInt((a.caseNumber || '').split('-')[1] || '0');
             const numB = parseInt((b.caseNumber || '').split('-')[1] || '0');
@@ -145,16 +150,30 @@
       const handleSaveCase = async (newCase) => {
         try {
           if (newCase.id) {
-            // Actualizar caso existente
             const docRef = doc(db, 'casos', newCase.id);
             const { id, ...caseData } = newCase;
             await updateDoc(docRef, caseData);
           } else {
-            // Crear caso nuevo
             const casesRef = collection(db, 'casos');
             const currentCount = cases.length + 1;
             const caseNumber = `CASO-${String(currentCount).padStart(3, '0')}`;
-            await addDoc(casesRef, { ...newCase, caseNumber, fecha: new Date().toISOString().split('T')[0] });
+            
+            let interacciones = [];
+            if (newCase.observacion) {
+              interacciones.push({
+                id: Date.now().toString(),
+                fecha: new Date().toISOString(),
+                texto: newCase.observacion,
+                rol: 'sistema' 
+              });
+            }
+
+            await addDoc(casesRef, { 
+              ...newCase, 
+              caseNumber, 
+              fecha: new Date().toISOString().split('T')[0],
+              interacciones: interacciones
+            });
           }
           navigateTo('list');
         } catch (error) {
@@ -164,9 +183,7 @@
 
       const handleDeleteCase = async (id) => {
         try {
-          // Si borra un caso desde Detalle, ver si era archivado para volver allí
           const deletedCase = cases.find(c => c.id === id);
-          
           const docRef = doc(db, 'casos', id);
           await deleteDoc(docRef);
           
@@ -180,31 +197,41 @@
         }
       };
 
-      // Función para exportar casos a Excel Real (.xlsx)
       const handleExportExcel = () => {
-        // Preparamos los datos estructurados para Excel
-        const dataToExport = cases.map(c => ({
-          'Nº Caso': c.caseNumber,
-          'Matrícula': c.matricula,
-          'Nombre': c.nombre,
-          'Teléfono': c.telefono,
-          'Carrera': c.carrera,
-          'Modalidad': c.modalidad || 'No especificada',
-          'Motivo': c.motivo,
-          'Estado': c.estado,
-          'Empresa Amiga': c.empresaAmiga ? 'Sí' : 'No',
-          'Nombre Empresa': c.nombreEmpresa || '-',
-          'Observaciones': c.observacion || '',
-          'Fecha de Registro': c.fecha
-        }));
+        const dataToExport = cases.map(c => {
+          let historialTxt = '';
+          if (c.interacciones && c.interacciones.length > 0) {
+            historialTxt = c.interacciones.map(i => {
+              const d = new Date(i.fecha);
+              const dateStr = !isNaN(d) ? `${d.getDate()}/${d.getMonth()+1} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}` : '';
+              const rol = i.rol === 'asesor' ? 'OFERTA/ASESOR' : i.rol === 'alumno' ? 'RESPUESTA ALUMNO' : 'MOTIVO INICIAL';
+              return `[${dateStr}] ${rol}: ${i.texto}`;
+            }).join(' || ');
+          } else {
+            historialTxt = c.observacion || '';
+          }
 
-        // Crear hoja de trabajo y libro usando la librería SheetJS (XLSX)
+          return {
+            'Nº Caso': c.caseNumber,
+            'Matrícula': c.matricula,
+            'Nombre': c.nombre,
+            'Teléfono': c.telefono,
+            'Carrera': c.carrera,
+            'Modalidad': c.modalidad || 'No especificada',
+            'Tipo Alumno': c.tipoAlumno && c.tipoAlumno.length > 0 ? c.tipoAlumno.join(', ') : 'No especificado',
+            'Motivo': c.motivo,
+            'Estado': c.estado,
+            'Empresa Amiga': c.empresaAmiga ? 'Sí' : 'No',
+            'Nombre Empresa': c.nombreEmpresa || '-',
+            'Historial de Negociación': historialTxt,
+            'Fecha de Registro': c.fecha
+          };
+        });
+
         const worksheet = window.XLSX.utils.json_to_sheet(dataToExport);
         const workbook = window.XLSX.utils.book_new();
         window.XLSX.utils.book_append_sheet(workbook, worksheet, "Casos Retención");
-
-        // Generar y descargar el archivo .xlsx
-        window.XLSX.writeFile(workbook, `Casos_Retencion_${new Date().toISOString().split('T')[0]}.xlsx`);
+        window.XLSX.writeFile(workbook, `Reporte_Retencion_${new Date().toISOString().split('T')[0]}.xlsx`);
       };
 
       if (loading) {
@@ -218,11 +245,9 @@
         );
       }
 
-      // Separar activos de archivados
       const activeCases = cases.filter(c => c.estado !== 'Retenido' && c.estado !== 'Baja definitiva');
       const archivedCases = cases.filter(c => c.estado === 'Retenido' || c.estado === 'Baja definitiva');
 
-      // Calcular límite conceptual para capa gratuita
       const MAX_DB_USAGE = 5000;
       const dbUsagePercent = Math.min((cases.length / MAX_DB_USAGE) * 100, 100);
 
@@ -238,7 +263,7 @@
               <p className="text-xs text-slate-400 mt-1">Gestión de Bajas Estudiantiles</p>
             </div>
             
-            <nav className="flex-1 px-4 space-y-2 mt-4 overflow-y-auto">
+            <nav className="flex-1 px-4 space-y-2 mt-4 overflow-y-auto custom-scrollbar">
               <button 
                 onClick={() => navigateTo('list')}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${currentView === 'list' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'}`}
@@ -277,7 +302,6 @@
               </div>
             </nav>
 
-            {/* Monitor de Uso Firebase */}
             <div className="p-4 mt-auto border-t border-slate-800">
               <div className="bg-slate-800/50 p-4 rounded-xl shadow-inner">
                 <div className="flex justify-between items-center mb-2">
@@ -296,14 +320,14 @@
           </aside>
 
           {/* Main Content */}
-          <main className="flex-1 overflow-y-auto relative bg-slate-50 w-full h-full">
+          <main className="flex-1 overflow-y-auto relative bg-slate-50 w-full h-full custom-scrollbar">
             <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 p-6 flex justify-between items-center sticky top-0 z-20 shadow-sm">
               <h2 className="text-2xl font-semibold text-slate-800 capitalize">
-                {currentView === 'dashboard' && 'Panel de Control'}
+                {currentView === 'dashboard' && 'Panel de Control Global'}
                 {currentView === 'list' && 'Directorio de Casos Activos'}
                 {currentView === 'archived' && 'Historial de Casos Archivados'}
                 {currentView === 'new' && (selectedCaseId ? 'Editar Caso' : 'Registrar Nuevo Caso')}
-                {currentView === 'detail' && 'Detalle y Gestión del Caso'}
+                {currentView === 'detail' && 'Detalle y Negociación del Caso'}
               </h2>
             </header>
 
@@ -326,7 +350,11 @@
                     if (c && (c.estado === 'Retenido' || c.estado === 'Baja definitiva')) navigateTo('archived');
                     else navigateTo('list');
                   }} 
-                  onUpdate={handleSaveCase}
+                  onUpdate={async (updatedCase) => {
+                    const docRef = doc(db, 'casos', updatedCase.id);
+                    const { id, ...caseData } = updatedCase;
+                    await updateDoc(docRef, caseData);
+                  }}
                   onEdit={(id) => navigateTo('new', id)}
                   onDelete={handleDeleteCase}
                 />
@@ -464,6 +492,18 @@
         return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
       };
 
+      // Función para pintar badges modernos según el motivo
+      const getMotivoStyle = (motivo) => {
+        switch(motivo) {
+          case 'Económico': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+          case 'Falta de tiempo / Horarios': return 'bg-blue-50 text-blue-700 border-blue-200';
+          case 'Laboral': return 'bg-orange-50 text-orange-700 border-orange-200';
+          case 'Académico': return 'bg-purple-50 text-purple-700 border-purple-200';
+          case 'Personal / Salud': return 'bg-rose-50 text-rose-700 border-rose-200';
+          default: return 'bg-slate-100 text-slate-700 border-slate-200';
+        }
+      };
+
       return (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-fade-in">
           <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-white">
@@ -486,13 +526,14 @@
                   <th className="p-5 font-semibold">Matrícula</th>
                   <th className="p-5 font-semibold">Alumno</th>
                   <th className="p-5 font-semibold">Carrera y Modalidad</th>
+                  <th className="p-5 font-semibold">Motivo</th>
                   <th className="p-5 font-semibold">Estado</th>
                   <th className="p-5 font-semibold text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filtered.length === 0 ? (
-                  <tr><td colSpan="5" className="p-10 text-center text-slate-500 font-medium">{emptyMsg}</td></tr>
+                  <tr><td colSpan="6" className="p-10 text-center text-slate-500 font-medium">{emptyMsg}</td></tr>
                 ) : (
                   filtered.map(c => {
                     const careerInfo = CAREERS.find(car => car.name === c.carrera) || CAREERS[0];
@@ -503,7 +544,7 @@
                         </td>
                         <td className="p-5">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-inner" style={{ backgroundColor: careerInfo.hex }}>
+                            <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-inner flex-shrink-0" style={{ backgroundColor: careerInfo.hex }}>
                               {getInitials(c.nombre)}
                             </div>
                             <div>
@@ -513,16 +554,21 @@
                           </div>
                         </td>
                         <td className="p-5">
-                          <div className="flex flex-col items-start gap-1">
+                          <div className="flex flex-col items-start gap-1.5">
                             <span 
                               style={{ backgroundColor: careerInfo.hex + '1A', color: careerInfo.hex, borderColor: careerInfo.hex + '40' }}
-                              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border"
+                              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold border"
                             >
                               <span style={{ backgroundColor: careerInfo.hex }} className="w-1.5 h-1.5 rounded-full"></span>
                               {c.carrera}
                             </span>
                             <span className="text-xs text-slate-500 font-bold px-1">{c.modalidad || 'No especificada'}</span>
                           </div>
+                        </td>
+                        <td className="p-5">
+                           <span className={`inline-flex px-3 py-1.5 rounded-lg text-xs font-bold border shadow-sm ${getMotivoStyle(c.motivo)}`}>
+                             {c.motivo}
+                           </span>
                         </td>
                         <td className="p-5">
                           <StatusBadge status={c.estado} />
@@ -532,7 +578,7 @@
                             onClick={(e) => { e.stopPropagation(); onSelect(c.id); }}
                             className="p-2 text-slate-400 group-hover:text-indigo-600 group-hover:bg-indigo-50 rounded-xl transition-all inline-flex items-center gap-1 font-semibold text-sm"
                           >
-                            Ver / Gestionar <ChevronRight size={16} />
+                            Ver Caso <ChevronRight size={16} />
                           </button>
                         </td>
                       </tr>
@@ -559,11 +605,14 @@
     // --- CASE FORM COMPONENT ---
     function CaseForm({ caseToEdit = null, onSave, onCancel }) {
       const [formData, setFormData] = useState(caseToEdit || {
-        matricula: '', nombre: '', telefono: '', carrera: CAREERS[0].name, modalidad: CAREERS[0].modalities[0], estado: 'Solicitud de baja', motivo: REASONS[0], empresaAmiga: false, nombreEmpresa: '', observacion: ''
+        matricula: '', nombre: '', telefono: '', carrera: CAREERS[0].name, modalidad: CAREERS[0].modalities[0], tipoAlumno: [], estado: 'Solicitud de baja', motivo: REASONS[0], empresaAmiga: false, nombreEmpresa: '', observacion: ''
       });
 
       useEffect(() => {
-        if (caseToEdit) setFormData(caseToEdit);
+        if (caseToEdit) setFormData({
+          ...caseToEdit,
+          tipoAlumno: caseToEdit.tipoAlumno || []
+        });
       }, [caseToEdit]);
 
       const handleSubmit = (e) => {
@@ -576,7 +625,6 @@
         const newCareerObj = CAREERS.find(c => c.name === newCareerName);
         let currentModality = formData.modalidad;
 
-        // Si la carrera elegida no tiene la modalidad actual, se asigna la primera que tenga
         if (!newCareerObj.modalities.includes(currentModality)) {
           currentModality = newCareerObj.modalities[0];
         }
@@ -584,11 +632,20 @@
         setFormData({...formData, carrera: newCareerName, modalidad: currentModality});
       };
 
+      const handleTipoAlumnoChange = (tipo) => {
+        setFormData(prev => {
+          const newTipos = prev.tipoAlumno.includes(tipo)
+            ? prev.tipoAlumno.filter(t => t !== tipo)
+            : [...prev.tipoAlumno, tipo];
+          return { ...prev, tipoAlumno: newTipos };
+        });
+      };
+
       const careerInfo = CAREERS.find(c => c.name === formData.carrera) || CAREERS[0];
       
       return (
         <div 
-          className="max-w-2xl mx-auto bg-white rounded-2xl shadow-md border-t-4 p-8 transition-all duration-300 animate-fade-in"
+          className="max-w-3xl mx-auto bg-white rounded-2xl shadow-md border-t-4 p-8 transition-all duration-300 animate-fade-in"
           style={{ borderTopColor: careerInfo.hex }}
         >
           <div className="flex items-center gap-3 mb-6 border-b pb-4 border-slate-100">
@@ -600,8 +657,8 @@
             </h3>
           </div>
           
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div className="grid grid-cols-2 gap-5">
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-1">Matrícula</label>
                 <input required type="text" className="w-full border border-slate-300 rounded-xl p-2.5 focus:ring-2 outline-none transition-shadow"
@@ -641,7 +698,7 @@
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-1">Motivo principal</label>
                 <select className="w-full border border-slate-300 rounded-xl p-2.5 focus:ring-2 outline-none transition-shadow"
@@ -660,34 +717,56 @@
               </div>
             </div>
 
-            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-              <div className="flex items-center gap-2">
-                <input type="checkbox" id="empresaAmiga" className="w-4 h-4 rounded border-gray-300 focus:ring-2"
-                  style={{ accentColor: careerInfo.hex }}
-                  checked={formData.empresaAmiga} onChange={e => setFormData({...formData, empresaAmiga: e.target.checked, nombreEmpresa: !e.target.checked ? '' : formData.nombreEmpresa})} />
-                <label htmlFor="empresaAmiga" className="text-sm font-bold text-slate-800 cursor-pointer">
-                  El alumno pertenece a una "Empresa Amiga" (Ya posee 20% desc.)
-                </label>
+            {/* Nuevo bloque: Etiquetas del Alumno (Tipo y Empresa) */}
+            <div className="bg-slate-50 p-5 rounded-xl border border-slate-200 space-y-4">
+              <h4 className="font-bold text-slate-700 text-sm border-b border-slate-200 pb-2">Perfil del Alumno (Múltiple Selección)</h4>
+              
+              <div className="flex flex-wrap gap-4">
+                {STUDENT_TYPES.map(tipo => (
+                  <label key={tipo} className="flex items-center gap-2 cursor-pointer bg-white px-3 py-2 rounded-lg border border-slate-200 shadow-sm hover:border-indigo-300 transition-colors">
+                    <input 
+                      type="checkbox" 
+                      className="w-4 h-4 rounded border-gray-300 focus:ring-2"
+                      style={{ accentColor: careerInfo.hex }}
+                      checked={formData.tipoAlumno && formData.tipoAlumno.includes(tipo)}
+                      onChange={() => handleTipoAlumnoChange(tipo)}
+                    />
+                    <span className="text-sm font-bold text-slate-700">{tipo}</span>
+                  </label>
+                ))}
               </div>
-              {formData.empresaAmiga && (
-                <div className="pl-6 animate-fade-in">
-                  <label className="block text-xs font-semibold text-slate-500 mb-1">Nombre de la Empresa</label>
-                  <input required type="text" placeholder="Ej: Naranja X, Apex..." className="w-full border border-slate-300 rounded-lg p-2 focus:ring-2 outline-none text-sm transition-shadow"
-                    style={{ '--tw-ring-color': careerInfo.hex }}
-                    value={formData.nombreEmpresa} onChange={e => setFormData({...formData, nombreEmpresa: e.target.value})} />
-                </div>
-              )}
+
+              <div className="pt-2">
+                <label className="flex items-center gap-2 cursor-pointer bg-indigo-50/50 px-3 py-2 rounded-lg border border-indigo-100 transition-colors w-fit">
+                  <input type="checkbox" className="w-4 h-4 rounded border-gray-300 focus:ring-2"
+                    style={{ accentColor: careerInfo.hex }}
+                    checked={formData.empresaAmiga} onChange={e => setFormData({...formData, empresaAmiga: e.target.checked, nombreEmpresa: !e.target.checked ? '' : formData.nombreEmpresa})} />
+                  <span className="text-sm font-bold text-indigo-900">
+                    Posee Convenio "Empresa Amiga" (Ya tiene 20% desc.)
+                  </span>
+                </label>
+                
+                {formData.empresaAmiga && (
+                  <div className="mt-3 ml-1 animate-fade-in w-full md:w-1/2">
+                    <label className="block text-xs font-semibold text-slate-500 mb-1">Nombre de la Empresa</label>
+                    <input required type="text" placeholder="Ej: Naranja X, Apex..." className="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 outline-none text-sm transition-shadow shadow-sm"
+                      style={{ '--tw-ring-color': careerInfo.hex }}
+                      value={formData.nombreEmpresa} onChange={e => setFormData({...formData, nombreEmpresa: e.target.value})} />
+                  </div>
+                )}
+              </div>
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1">Observaciones / Inquietudes</label>
-              <textarea required rows={4} className="w-full border border-slate-300 rounded-xl p-2.5 focus:ring-2 outline-none transition-shadow"
+              <label className="block text-sm font-semibold text-slate-700 mb-1">Detalle del Motivo / Situación Inicial</label>
+              <textarea required rows={3} className="w-full border border-slate-300 rounded-xl p-3 focus:ring-2 outline-none transition-shadow"
                 style={{ '--tw-ring-color': careerInfo.hex }}
-                placeholder="Detalla la situación del alumno..."
+                placeholder="Detalla cómo inició el reclamo o la situación particular..."
                 value={formData.observacion} onChange={e => setFormData({...formData, observacion: e.target.value})}></textarea>
+                <p className="text-xs text-slate-500 mt-1">* Nota: Podrás añadir ofertas y respuestas posteriores en el panel de detalle del caso.</p>
             </div>
 
-            <div className="flex justify-end gap-3 pt-4">
+            <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
               <button type="button" onClick={onCancel} className="px-5 py-2.5 border border-slate-300 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition-colors">
                 Cancelar
               </button>
@@ -707,6 +786,8 @@
     // --- CASE DETAIL COMPONENT ---
     function CaseDetail({ caseData, onBack, onUpdate, onEdit, onDelete }) {
       const [showDeleteModal, setShowDeleteModal] = useState(false);
+      const [newInteraction, setNewInteraction] = useState('');
+      const chatContainerRef = useRef(null);
 
       if (!caseData) return null;
 
@@ -716,9 +797,55 @@
       const isTimeIssue = caseData.motivo.includes('tiempo') || caseData.motivo.includes('Horarios');
       const isEconIssue = caseData.motivo.includes('Económico');
 
+      const currentDiscount = caseData.empresaAmiga ? 20 : 0;
+      const extraBaseOffer = caseData.empresaAmiga ? 10 : 20;
+      const totalBaseDiscount = currentDiscount + extraBaseOffer; 
+      const extraProofOffer = caseData.empresaAmiga ? 20 : 40;
+      const totalProofDiscount = currentDiscount + extraProofOffer; 
+
+      useEffect(() => {
+        if (chatContainerRef.current) {
+          chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+        }
+      }, [caseData.interacciones]);
+
       const updateStatus = (newStatus) => {
         onUpdate({ ...caseData, estado: newStatus });
       };
+
+      const handleAddInteraction = (rol) => {
+        if (!newInteraction.trim()) return;
+        
+        const interaccion = {
+          id: Date.now().toString(),
+          fecha: new Date().toISOString(),
+          texto: newInteraction.trim(),
+          rol: rol
+        };
+
+        const currentInteracciones = caseData.interacciones || [];
+        
+        if (currentInteracciones.length === 0 && caseData.observacion) {
+          currentInteracciones.push({
+            id: 'initial',
+            fecha: caseData.fecha ? caseData.fecha + 'T00:00:00.000Z' : new Date().toISOString(),
+            texto: caseData.observacion,
+            rol: 'sistema'
+          });
+        }
+
+        onUpdate({
+          ...caseData,
+          interacciones: [...currentInteracciones, interaccion]
+        });
+
+        setNewInteraction('');
+      };
+
+      // Si no tiene historial guardado aún, mostramos la observación original para no perderla visualmente
+      const interacciones = (caseData.interacciones && caseData.interacciones.length > 0) 
+        ? caseData.interacciones 
+        : (caseData.observacion ? [{id: 'old', fecha: caseData.fecha ? caseData.fecha + 'T12:00:00.000Z' : new Date().toISOString(), texto: caseData.observacion, rol: 'sistema'}] : []);
 
       return (
         <div className="space-y-6 relative animate-fade-in">
@@ -772,7 +899,10 @@
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            {/* Columna Izquierda: Información del Estudiante y Estado */}
             <div className="lg:col-span-1 space-y-6">
+              
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 border-t-4" style={{ borderTopColor: careerInfo.hex }}>
                 <div className="flex justify-between items-start mb-4">
                   <div>
@@ -783,6 +913,17 @@
                 </div>
 
                 <div className="space-y-4 mt-6">
+                  
+                  {caseData.tipoAlumno && caseData.tipoAlumno.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {caseData.tipoAlumno.map(tipo => (
+                        <span key={tipo} className="px-2.5 py-1 bg-slate-100 text-slate-600 text-[10px] font-bold uppercase tracking-wider rounded border border-slate-200">
+                          {tipo}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
                   <div>
                     <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Carrera</p>
                     <span 
@@ -831,18 +972,8 @@
                 </div>
               </div>
 
-              <div className="bg-amber-50 rounded-2xl shadow-sm border border-amber-200 p-6 relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-4 opacity-5 text-amber-500"><AlertCircle size={64} /></div>
-                <h4 className="font-bold text-amber-900 mb-2 flex items-center gap-2 relative z-10">
-                   Observaciones / Inquietudes
-                </h4>
-                <p className="text-amber-800 text-sm italic border-l-4 border-amber-400 pl-3 relative z-10">
-                  "{caseData.observacion}"
-                </p>
-              </div>
-
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-                 <h4 className="font-bold text-slate-800 mb-4">Actualizar Estado</h4>
+                 <h4 className="font-bold text-slate-800 mb-4">Actualizar Estado Final</h4>
                  <div className="grid grid-cols-1 gap-2">
                     {STATUSES.map(s => (
                       <button 
@@ -856,114 +987,178 @@
                  </div>
                  <p className="text-[10px] text-slate-400 mt-3 italic text-center leading-tight">Nota: Marcar como "Retenido" o "Baja" cerrará y enviará el caso a Archivados automáticamente.</p>
               </div>
+
             </div>
 
-            <div className="lg:col-span-2 space-y-6">
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                <div className="p-6 border-b border-slate-100">
-                  <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                    <Search className="text-indigo-500" /> Estrategia de Retención Calculada
+            {/* Columna Derecha: Estrategia y NUEVO Historial de Negociación */}
+            <div className="lg:col-span-2 space-y-6 flex flex-col">
+              
+              {/* Tarjetas de Estrategia */}
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex-shrink-0">
+                <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+                  <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                    <Search className="text-indigo-500" size={18}/> Estrategia de Retención Calculada
                   </h3>
-                  <p className="text-sm text-slate-500 mt-1">Sigue estas directrices para negociar con el alumno según sus inquietudes registradas.</p>
                 </div>
                 
-                <div className="p-6 grid grid-cols-1 gap-6">
+                <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-5 bg-slate-50/50">
                   
-                  {/* --- TARJETA DE OFERTA ECONÓMICA MEJORADA --- */}
-                  <div className={`rounded-xl border shadow-sm ${isTimeIssue && !isEconIssue ? 'bg-slate-50 border-slate-200' : 'bg-emerald-50 border-emerald-200'}`}>
-                    <div className={`p-4 border-b ${isTimeIssue && !isEconIssue ? 'border-slate-200' : 'border-emerald-200 bg-emerald-100/50 rounded-t-xl'}`}>
-                      <h4 className={`font-bold flex items-center gap-2 ${isTimeIssue && !isEconIssue ? 'text-slate-600' : 'text-emerald-900'}`}>
-                         Estrategia Económica (Por el semestre en curso)
+                  {/* Estrategia Económica */}
+                  <div className={`rounded-xl border shadow-sm bg-white ${isTimeIssue && !isEconIssue ? 'border-slate-200' : 'border-emerald-200'}`}>
+                    <div className={`p-3 border-b ${isTimeIssue && !isEconIssue ? 'border-slate-100' : 'border-emerald-100 bg-emerald-50/50 rounded-t-xl'}`}>
+                      <h4 className={`text-sm font-bold flex items-center gap-1.5 ${isTimeIssue && !isEconIssue ? 'text-slate-500' : 'text-emerald-800'}`}>
+                         Oferta Económica (Semestre)
                       </h4>
                     </div>
-                    
-                    <div className="p-5">
+                    <div className="p-4">
                       {isTimeIssue && !isEconIssue ? (
-                        <div className="flex gap-3 items-start">
-                          <AlertCircle className="text-slate-400 flex-shrink-0 mt-0.5" />
-                          <p className="text-sm text-slate-600 leading-relaxed font-medium">
-                            El motivo principal de baja es de <strong>Tiempo/Laboral</strong>. La estrategia no debe ser económica a menos que el alumno lo solicite expresamente. Céntrate exclusivamente en ofrecer y explicar la flexibilidad de las diferentes Modalidades.
-                          </p>
-                        </div>
+                        <p className="text-xs text-slate-500 leading-relaxed font-medium">
+                          Motivo de <strong>Tiempo/Laboral</strong> detectado. Enfoque exclusivo en Modalidades. No ofrezca economía salvo pedido explícito.
+                        </p>
                       ) : (
-                        <div className="space-y-4">
+                        <div className="space-y-3">
                           {caseData.empresaAmiga ? (
-                            <>
-                              <div className="bg-white p-4 rounded-lg border border-emerald-100 shadow-sm mb-4">
-                                <p className="text-sm text-emerald-800 font-medium">
-                                  El alumno <strong className="text-emerald-900">ya posee un 20% de descuento vigente</strong> gracias a su convenio de Empresa Amiga ({caseData.nombreEmpresa}). Debes ofrecerle las siguientes ayudas <strong>sobre la cuota base</strong> (no sumadas a lo que ya tiene de forma acumulativa, sino un reemplazo total por el semestre):
-                                </p>
-                              </div>
-                              <ul className="space-y-3">
-                                <li className="flex justify-between items-center bg-white border border-emerald-100 p-3 rounded-lg shadow-sm">
-                                  <span className="text-sm font-bold text-slate-700">Oferta Inicial Permitida (+10% extra):</span>
-                                  <span className="font-extrabold text-xl text-emerald-600">30% Total</span>
-                                </li>
-                                <li className="flex justify-between items-center bg-emerald-100 border border-emerald-200 p-3 rounded-lg shadow-sm">
-                                  <span className="text-sm font-bold text-slate-700">Oferta MÁXIMA c/Comprobante (+20% extra):</span>
-                                  <span className="font-extrabold text-xl text-emerald-700">40% Total</span>
-                                </li>
-                              </ul>
-                            </>
+                            <p className="text-[11px] text-emerald-700 bg-emerald-50 p-2 rounded border border-emerald-100">
+                              Alumno con <strong>20% activo (Empresa Amiga)</strong>. Ofrecer ayudas sobre cuota base:
+                            </p>
                           ) : (
-                            <>
-                              <div className="bg-white p-4 rounded-lg border border-emerald-100 shadow-sm mb-4">
-                                <p className="text-sm text-emerald-800 font-medium">
-                                  El alumno <strong className="text-emerald-900">NO cuenta con descuentos vigentes</strong> registrados. Tienes autorizado ofrecer los siguientes porcentajes de ayuda especial por este semestre:
-                                </p>
-                              </div>
-                              <ul className="space-y-3">
-                                <li className="flex justify-between items-center bg-white border border-emerald-100 p-3 rounded-lg shadow-sm">
-                                  <span className="text-sm font-bold text-slate-700">Oferta Inicial Permitida:</span>
-                                  <span className="font-extrabold text-xl text-emerald-600">20% Total</span>
-                                </li>
-                                <li className="flex justify-between items-center bg-emerald-100 border border-emerald-200 p-3 rounded-lg shadow-sm">
-                                  <span className="text-sm font-bold text-slate-700">Oferta MÁXIMA c/Comprobante:</span>
-                                  <span className="font-extrabold text-xl text-emerald-700">40% Total</span>
-                                </li>
-                              </ul>
-                            </>
+                            <p className="text-[11px] text-emerald-700 bg-emerald-50 p-2 rounded border border-emerald-100">
+                              Alumno <strong>SIN descuentos activos</strong>. Ofrecer estas ayudas especiales:
+                            </p>
                           )}
-                          <p className="text-xs text-emerald-700 mt-4 italic font-medium">
-                            * Recuerda solicitar documentación respaldatoria (telegrama de despido, certificado de salud, etc.) antes de otorgar el descuento máximo del 40%.
-                          </p>
+                          <div className="flex justify-between items-center text-sm border-b border-slate-100 pb-1.5">
+                            <span className="font-bold text-slate-600">Oferta Inicial:</span>
+                            <span className="font-extrabold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">{totalBaseDiscount}%</span>
+                          </div>
+                          <div className="flex justify-between items-center text-sm">
+                            <span className="font-bold text-slate-600">Máx. c/Comprobante:</span>
+                            <span className="font-extrabold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">{totalProofDiscount}%</span>
+                          </div>
                         </div>
                       )}
                     </div>
                   </div>
 
-                  {/* --- TARJETA DE MODALIDADES --- */}
-                  <div className="bg-blue-50 rounded-xl border border-blue-200 shadow-sm overflow-hidden">
-                    <div className="p-4 bg-blue-100/50 border-b border-blue-200">
-                      <h4 className="font-bold text-blue-900 flex items-center gap-2">
-                        Opciones de Cambio de Modalidad
-                      </h4>
+                  {/* Opciones de Modalidad */}
+                  <div className="bg-white rounded-xl border border-blue-200 shadow-sm overflow-hidden">
+                    <div className="p-3 border-b border-blue-100 bg-blue-50/50">
+                      <h4 className="text-sm font-bold text-blue-800 flex items-center gap-1.5">Opciones de Cambio Modalidad</h4>
                     </div>
-                    <div className="p-5 space-y-3">
+                    <div className="p-4 space-y-2 max-h-40 overflow-y-auto custom-scrollbar">
                       {careerInfo.modalities.map(mod => (
-                        <div key={mod} className={`bg-white rounded-lg p-4 border shadow-sm ${caseData.modalidad === mod ? 'border-blue-500 ring-1 ring-blue-500 relative overflow-hidden' : 'border-blue-100'}`}>
-                          {caseData.modalidad === mod && <div className="absolute top-0 right-0 bg-blue-500 text-white text-[10px] font-bold px-2 py-1 rounded-bl-lg uppercase tracking-wider">Cursando Actual</div>}
-                          <span className="font-bold text-blue-900 text-sm block mb-2">
-                            {mod}
+                        <div key={mod} className={`rounded-lg p-2.5 border ${caseData.modalidad === mod ? 'border-blue-400 bg-blue-50' : 'border-slate-100 bg-slate-50'}`}>
+                          <span className="font-bold text-blue-900 text-xs flex justify-between items-center mb-1">
+                            {mod} {caseData.modalidad === mod && <span className="text-[9px] bg-blue-200 text-blue-800 px-1.5 py-0.5 rounded uppercase">Actual</span>}
                           </span>
-                          <span className="text-sm text-slate-600 leading-relaxed block">{MODALITY_RULES[mod]}</span>
+                          <span className="text-[11px] text-slate-600 leading-tight block">{MODALITY_RULES[mod]}</span>
                         </div>
                       ))}
-                      <p className="text-xs text-blue-800 mt-4 italic font-medium">
-                        * Explícale detalladamente los beneficios del "Aula Híbrida" (flexibilidad total clase a clase sin obligación de presencialidad) si su problema es el tiempo.
-                      </p>
                     </div>
                   </div>
 
                 </div>
               </div>
+
+              {/* --- HISTORIAL DE NEGOCIACIÓN (NUEVO) --- */}
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col flex-1 min-h-[400px]">
+                <div className="p-4 border-b border-slate-100 flex items-center gap-2 bg-slate-50/50 rounded-t-2xl">
+                  <MessageSquare size={20} className="text-slate-400" />
+                  <h3 className="font-bold text-slate-700">Historial de Seguimiento e Interacciones</h3>
+                </div>
+
+                {/* Contenedor del Chat */}
+                <div 
+                  ref={chatContainerRef}
+                  className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-slate-50/30"
+                >
+                  {interacciones.map((msg, index) => {
+                    let d;
+                    try {
+                      d = new Date(msg.fecha);
+                      if(isNaN(d.getTime())) d = new Date();
+                    } catch(e) {
+                      d = new Date();
+                    }
+                    
+                    const isAsesor = msg.rol === 'asesor';
+                    const isAlumno = msg.rol === 'alumno';
+                    const isSistema = msg.rol === 'sistema'; 
+                    
+                    return (
+                      <div key={msg.id || index} className={`flex w-full ${isAsesor ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-[80%] flex gap-3 ${isAsesor ? 'flex-row-reverse' : 'flex-row'}`}>
+                          
+                          {/* Avatar */}
+                          <div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center shadow-sm ${
+                            isAsesor ? 'bg-indigo-100 text-indigo-600' : 
+                            isSistema ? 'bg-amber-100 text-amber-600' : 
+                            'bg-slate-200 text-slate-600'
+                          }`}>
+                            {isAsesor ? <User size={14} /> : isSistema ? <AlertCircle size={14} /> : <User size={14} />}
+                          </div>
+
+                          {/* Mensaje */}
+                          <div className={`flex flex-col ${isAsesor ? 'items-end' : 'items-start'}`}>
+                            <div className="flex items-center gap-2 mb-1 px-1">
+                              <span className="text-[11px] font-bold text-slate-500 uppercase">
+                                {isAsesor ? 'Tú (Asesor)' : isSistema ? 'Motivo Inicial / Observación' : 'Alumno'}
+                              </span>
+                              <span className="text-[10px] text-slate-400">
+                                {d.toLocaleDateString()} {d.getHours()}:{String(d.getMinutes()).padStart(2, '0')}
+                              </span>
+                            </div>
+                            <div className={`p-3.5 rounded-2xl text-sm shadow-sm whitespace-pre-wrap leading-relaxed ${
+                              isAsesor ? 'bg-indigo-600 text-white rounded-tr-none' : 
+                              isSistema ? 'bg-amber-50 border border-amber-200 text-amber-900 rounded-tl-none italic' : 
+                              'bg-white border border-slate-200 text-slate-700 rounded-tl-none'
+                            }`}>
+                              {msg.texto}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Input Area */}
+                <div className="p-4 bg-white border-t border-slate-100 rounded-b-2xl">
+                  <div className="flex flex-col gap-3">
+                    <textarea 
+                      rows={2}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none custom-scrollbar transition-all"
+                      placeholder="Escribe el ofrecimiento realizado o la respuesta del alumno..."
+                      value={newInteraction}
+                      onChange={(e) => setNewInteraction(e.target.value)}
+                    ></textarea>
+                    
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <button 
+                        onClick={() => handleAddInteraction('alumno')}
+                        disabled={!newInteraction.trim()}
+                        className="px-4 py-2 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg text-xs font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 border border-slate-200"
+                      >
+                        Añadir Respuesta del Alumno
+                      </button>
+                      <button 
+                        onClick={() => handleAddInteraction('asesor')}
+                        disabled={!newInteraction.trim()}
+                        className="px-4 py-2 bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg text-xs font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-sm"
+                      >
+                        Registrar mi Oferta / Acción <Send size={14} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
             </div>
           </div>
         </div>
       );
     }
 
-    // Inicializar y renderizar la aplicación
     const root = createRoot(document.getElementById('root'));
     root.render(<App />);
   </script>
