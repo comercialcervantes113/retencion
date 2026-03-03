@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>RetenciónApp - Gestión Estudiantil</title>
+  <title>Retención de Alumnos - Gestión Estudiantil</title>
   
   <!-- Tailwind CSS para los estilos modernos -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -52,7 +52,7 @@
   <script type="text/babel" data-type="module">
     import React, { useState, useEffect, useMemo, useRef } from 'react';
     import { createRoot } from 'react-dom/client';
-    import { LayoutDashboard, Users, UserPlus, MessageCircle, Phone, Search, Filter, Save, ChevronRight, ArrowLeft, CheckCircle2, AlertCircle, XCircle, Clock, Edit2, Trash2, Archive, Database, Download, Send, User, MessageSquare, PlusCircle, Mic, Loader2 } from 'lucide-react';
+    import { LayoutDashboard, Users, UserPlus, MessageCircle, Phone, Search, Filter, Save, ChevronRight, ArrowLeft, CheckCircle2, AlertCircle, XCircle, Clock, Edit2, Trash2, Archive, Database, Download, Send, User, MessageSquare, PlusCircle, Mic, Loader2, Sparkles } from 'lucide-react';
     
     // --- INTEGRACIÓN DE FIREBASE ---
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
@@ -99,7 +99,7 @@
     // --- FUNCIÓN GLOBAL DE IA PARA CORREGIR TEXTOS ---
     const correctTextWithAI = async (text) => {
       const apiKey = ""; 
-      const promptText = `Eres un asistente de redacción que corrige la ortografía, gramática y estilo de textos dictados por voz. Mejora el siguiente texto para que suene claro, profesional y empático en el contexto de un asesor universitario anotando el historial de un alumno. No agregues información inventada. Devuelve ÚNICAMENTE el texto corregido, sin comillas adicionales ni explicaciones:\n\n${text}`;
+      const promptText = `Eres un experto asesor de retención estudiantil. Corrige la ortografía, gramática y mejora la redacción del siguiente texto para que suene claro, profesional y empático. Mantenlo conciso. No agregues información inventada ni cambies el sentido original. Devuelve ÚNICAMENTE el texto corregido, sin comillas adicionales ni explicaciones:\n\n${text}`;
       
       try {
         const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
@@ -227,7 +227,9 @@
             historialTxt = c.interacciones.map(i => {
               const d = new Date(i.fecha);
               const dateStr = !isNaN(d) ? `${d.getDate()}/${d.getMonth()+1} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}` : '';
-              const rol = i.rol === 'asesor' ? 'OFERTA/ASESOR' : i.rol === 'alumno' ? 'RESPUESTA ALUMNO' : 'MOTIVO INICIAL';
+              const rol = i.rol === 'indagacion' ? 'INDAGO EL PROBLEMA' : 
+                          i.rol === 'seguimiento' ? 'SEGUIMIENTO Y NEGOCIACIÓN' : 
+                          i.rol === 'cierre' ? 'CIERRE' : 'MOTIVO INICIAL';
               return `[${dateStr}] ${rol}: ${i.texto}`;
             }).join(' || ');
           } else {
@@ -283,12 +285,13 @@
         <div className="flex h-screen w-full overflow-hidden">
           {/* Sidebar */}
           <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col shadow-xl z-10 flex-shrink-0">
-            <div className="p-6">
-              <h1 className="text-xl font-bold text-white flex items-center gap-2">
-                <Users className="text-indigo-400" />
-                <span>RetenciónApp</span>
-              </h1>
-              <p className="text-xs text-slate-400 mt-1">Gestión de Bajas Estudiantiles</p>
+            <div className="p-6 border-b border-slate-800/50">
+              <div className="flex items-center gap-3">
+                <img src="https://i.ibb.co/4nqvFQGM/logo.png" alt="Logo Cervantes" className="h-10 object-contain drop-shadow-sm" />
+                <h1 className="text-sm font-bold text-white leading-tight uppercase tracking-wider">
+                  Retención de<br/>Alumnos
+                </h1>
+              </div>
             </div>
             
             <nav className="flex-1 px-4 space-y-2 mt-4 overflow-y-auto custom-scrollbar">
@@ -355,7 +358,7 @@
                 {currentView === 'list' && 'Directorio de Casos Activos'}
                 {currentView === 'archived' && 'Historial de Casos Archivados'}
                 {currentView === 'new' && (selectedCaseId ? 'Editar Caso' : 'Registrar Nuevo Caso')}
-                {currentView === 'detail' && 'Detalle y Negociación del Caso'}
+                {currentView === 'detail' && 'Detalle y Seguimiento del Caso'}
               </h2>
             </header>
 
@@ -418,7 +421,6 @@
       const droppedPct = total === 0 ? 0 : Math.round((dropped / total) * 100);
       const inProgressPct = total === 0 ? 0 : Math.round((inProgress / total) * 100);
 
-      // Calcular desglose de Bajas Definitivas
       const breakdownBaja = droppedCases.reduce((acc, c) => {
         const key = c.detalleBaja || 'Sin especificar';
         acc[key] = (acc[key] || 0) + 1;
@@ -513,7 +515,7 @@
               </div>
             </div>
 
-            {/* Nuevo: Desglose de Bajas Definitivas */}
+            {/* Desglose de Bajas Definitivas */}
             {dropped > 0 && (
               <div className="bg-white/60 backdrop-blur-md p-8 rounded-3xl shadow-lg border border-white/80 animate-fade-in">
                 <h3 className="font-bold text-slate-800 mb-6 text-lg flex items-center gap-2">
@@ -719,6 +721,14 @@
         });
       };
 
+      const handleManualCorrection = async () => {
+        if (!formData.observacion.trim()) return;
+        setIsProcessing(true);
+        const correctedText = await correctTextWithAI(formData.observacion);
+        setFormData({...formData, observacion: correctedText});
+        setIsProcessing(false);
+      };
+
       const toggleDictation = () => {
         if (isRecording && recognitionRef.current) {
           recognitionRef.current.stop();
@@ -734,7 +744,7 @@
         const recognition = new SpeechRecognition();
         recognitionRef.current = recognition;
         recognition.lang = 'es-AR';
-        recognition.continuous = true; // Mantiene grabando hasta que se detiene manualmente
+        recognition.continuous = true; 
         recognition.interimResults = false;
         
         let localTranscript = "";
@@ -910,13 +920,26 @@
               <div className="relative">
                 <textarea required rows={3} className="w-full border border-slate-300 rounded-xl p-3 pb-12 focus:ring-2 outline-none transition-shadow"
                   style={{ '--tw-ring-color': careerInfo.hex }}
-                  placeholder="Detalla cómo inició el reclamo o la situación particular. Puedes escribir o usar el dictado por voz..."
+                  placeholder="Detalla la situación particular. Puedes escribir y usar la corrección mágica (✨), o usar el micrófono..."
                   value={formData.observacion} onChange={e => setFormData({...formData, observacion: e.target.value})}></textarea>
                 
-                {/* Controles de dictado por voz */}
                 <div className="absolute bottom-3 right-3 flex items-center gap-2">
                   {isProcessing && <span className="text-xs text-indigo-600 font-bold animate-pulse">Corrigiendo redacción (IA)...</span>}
                   {isRecording && <span className="text-xs text-red-600 font-bold animate-pulse">Grabando (Apreta el micrófono para detener)...</span>}
+                  
+                  <button
+                    type="button"
+                    onClick={handleManualCorrection}
+                    disabled={isProcessing || isRecording || !formData.observacion.trim()}
+                    title="Corregir redacción escrita con IA"
+                    className={`p-2.5 rounded-full transition-all shadow-sm ${
+                      isProcessing ? 'bg-indigo-100 text-indigo-500 cursor-wait' : 
+                      'bg-slate-100 text-slate-600 hover:bg-indigo-100 hover:text-indigo-600 disabled:opacity-50'
+                    }`}
+                  >
+                    <Sparkles size={16} />
+                  </button>
+
                   <button
                     type="button"
                     onClick={toggleDictation}
@@ -925,7 +948,7 @@
                     className={`p-2.5 rounded-full transition-all shadow-sm ${
                       isRecording ? 'bg-red-500 text-white animate-pulse' : 
                       isProcessing ? 'bg-indigo-100 text-indigo-500 cursor-wait' : 
-                      'bg-slate-100 text-slate-600 hover:bg-indigo-100 hover:text-indigo-600'
+                      'bg-slate-100 text-slate-600 hover:bg-indigo-100 hover:text-indigo-600 disabled:opacity-50'
                     }`}
                   >
                     {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <Mic size={16} />}
@@ -960,15 +983,15 @@
       const [bajaOtro, setBajaOtro] = useState('');
 
       const [newInteraction, setNewInteraction] = useState('');
-      const [interactionType, setInteractionType] = useState('asesor'); // 'asesor' | 'alumno'
+      const [interactionType, setInteractionType] = useState('indagacion'); // 'indagacion' | 'seguimiento' | 'cierre'
 
       const [isRecording, setIsRecording] = useState(false);
       const [isProcessing, setIsProcessing] = useState(false);
       const recognitionRef = useRef(null);
 
-      // Estado para manejar la edición de mensajes del historial
       const [editingMsgId, setEditingMsgId] = useState(null);
       const [editingMsgText, setEditingMsgText] = useState("");
+      const [deletingMsgId, setDeletingMsgId] = useState(null);
 
       const historyEndRef = useRef(null);
 
@@ -1033,6 +1056,14 @@
         setNewInteraction('');
       };
 
+      const handleManualCorrection = async () => {
+        if (!newInteraction.trim()) return;
+        setIsProcessing(true);
+        const correctedText = await correctTextWithAI(newInteraction);
+        setNewInteraction(correctedText);
+        setIsProcessing(false);
+      };
+
       const toggleDictation = () => {
         if (isRecording && recognitionRef.current) {
           recognitionRef.current.stop();
@@ -1048,7 +1079,7 @@
         const recognition = new SpeechRecognition();
         recognitionRef.current = recognition;
         recognition.lang = 'es-AR';
-        recognition.continuous = true; // Mantiene grabando hasta que se detiene manualmente
+        recognition.continuous = true; 
         recognition.interimResults = false;
         
         let localTranscript = "";
@@ -1088,6 +1119,7 @@
       const handleEditMsgStart = (msg) => {
         setEditingMsgId(msg.id || 'old');
         setEditingMsgText(msg.texto);
+        setDeletingMsgId(null);
       };
 
       const handleEditMsgCancel = () => {
@@ -1115,7 +1147,7 @@
           
           onUpdate({
             ...caseData,
-            observacion: editingMsgText, // Actualizamos la observación principal por seguridad
+            observacion: editingMsgText, 
             interacciones: finalInteractions
           });
         } else {
@@ -1132,6 +1164,24 @@
         setEditingMsgText("");
       };
 
+      const handleDeleteMsgConfirm = (msgId) => {
+        let finalInteractions = [...(caseData.interacciones || [])];
+        
+        if (msgId === 'old' || msgId === 'initial') {
+          onUpdate({
+            ...caseData,
+            observacion: '',
+            interacciones: finalInteractions.filter(i => i.id !== 'initial' && i.id !== 'old')
+          });
+        } else {
+          onUpdate({
+            ...caseData,
+            interacciones: finalInteractions.filter(i => i.id !== msgId)
+          });
+        }
+        setDeletingMsgId(null);
+      };
+
       const interacciones = (caseData.interacciones && caseData.interacciones.length > 0) 
         ? caseData.interacciones 
         : (caseData.observacion ? [{id: 'old', fecha: caseData.fecha ? caseData.fecha + 'T12:00:00.000Z' : new Date().toISOString(), texto: caseData.observacion, rol: 'sistema'}] : []);
@@ -1139,7 +1189,7 @@
       return (
         <div className="space-y-6 relative animate-fade-in">
           
-          {/* MODAL CONFIRMACIÓN ELIMINAR */}
+          {/* MODAL CONFIRMACIÓN ELIMINAR CASO */}
           {showDeleteModal && (
             <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
               <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl animate-fade-in border border-slate-100">
@@ -1414,29 +1464,35 @@
                       d = new Date();
                     }
                     
-                    const isAsesor = msg.rol === 'asesor';
-                    const isAlumno = msg.rol === 'alumno';
+                    const isIndagacion = msg.rol === 'indagacion';
+                    const isSeguimiento = msg.rol === 'seguimiento';
+                    const isCierre = msg.rol === 'cierre';
                     const isSistema = msg.rol === 'sistema'; 
 
                     let boxStyle = "border-slate-300 bg-white";
                     let badgeStyle = "bg-slate-100 text-slate-600";
                     let titleStr = "Observación General";
 
-                    if (isAsesor) {
-                      boxStyle = "border-indigo-400 bg-indigo-50/30";
-                      badgeStyle = "bg-indigo-100 text-indigo-700";
-                      titleStr = "Mi Oferta / Acción";
-                    } else if (isAlumno) {
-                      boxStyle = "border-emerald-400 bg-emerald-50/30";
-                      badgeStyle = "bg-emerald-100 text-emerald-700";
-                      titleStr = "Respuesta del Alumno";
-                    } else if (isSistema) {
+                    if (isIndagacion) {
                       boxStyle = "border-amber-400 bg-amber-50/30";
                       badgeStyle = "bg-amber-100 text-amber-700";
+                      titleStr = "Indago el problema";
+                    } else if (isSeguimiento) {
+                      boxStyle = "border-indigo-400 bg-indigo-50/30";
+                      badgeStyle = "bg-indigo-100 text-indigo-700";
+                      titleStr = "Seguimiento y negociación";
+                    } else if (isCierre) {
+                      boxStyle = "border-emerald-400 bg-emerald-50/30";
+                      badgeStyle = "bg-emerald-100 text-emerald-700";
+                      titleStr = "Cierre";
+                    } else if (isSistema) {
+                      boxStyle = "border-slate-400 bg-slate-50/30";
+                      badgeStyle = "bg-slate-200 text-slate-700";
                       titleStr = "Situación Inicial / Motivo";
                     }
 
                     const isEditingThis = editingMsgId === (msg.id || 'old');
+                    const isDeletingThis = deletingMsgId === (msg.id || 'old');
                     
                     return (
                       <div key={msg.id || index} className={`relative p-4 rounded-xl border-l-4 shadow-sm border-y border-r ${boxStyle} animate-fade-in`}>
@@ -1448,26 +1504,39 @@
                             <span className="text-[10px] font-bold text-slate-400">
                               {d.toLocaleDateString()} - {d.getHours()}:{String(d.getMinutes()).padStart(2, '0')}
                             </span>
-                            {!isEditingThis && (
-                              <button onClick={() => handleEditMsgStart(msg)} className="text-slate-400 hover:text-indigo-600 transition-colors" title="Editar observación">
-                                <Edit2 size={12} />
-                              </button>
+                            {!isEditingThis && !isDeletingThis && (
+                              <div className="flex gap-1 bg-white/50 rounded-md p-0.5 shadow-sm border border-slate-200/50">
+                                <button onClick={() => handleEditMsgStart(msg)} className="p-1 text-slate-400 hover:text-indigo-600 transition-colors rounded hover:bg-white" title="Editar observación">
+                                  <Edit2 size={12} />
+                                </button>
+                                <button onClick={() => setDeletingMsgId(msg.id || 'old')} className="p-1 text-slate-400 hover:text-red-600 transition-colors rounded hover:bg-white" title="Eliminar observación">
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
                             )}
                           </div>
                         </div>
                         
-                        {isEditingThis ? (
+                        {isDeletingThis ? (
+                          <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg animate-fade-in shadow-inner">
+                            <p className="text-xs text-red-800 font-bold mb-3 flex items-center gap-1.5"><AlertCircle size={14}/> ¿Seguro que deseas eliminar este registro del historial?</p>
+                            <div className="flex gap-2 justify-end">
+                              <button onClick={() => setDeletingMsgId(null)} className="px-3 py-1.5 text-[11px] font-bold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 shadow-sm transition-colors">Cancelar</button>
+                              <button onClick={() => handleDeleteMsgConfirm(msg.id || 'old')} className="px-3 py-1.5 text-[11px] font-bold text-white bg-red-500 rounded-lg hover:bg-red-600 shadow-sm transition-colors">Sí, eliminar</button>
+                            </div>
+                          </div>
+                        ) : isEditingThis ? (
                           <div className="mt-2 animate-fade-in">
                             <textarea 
-                              className="w-full bg-white border border-indigo-300 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 custom-scrollbar resize-none"
+                              className="w-full bg-white border border-indigo-300 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 custom-scrollbar resize-none shadow-inner"
                               rows={3}
                               value={editingMsgText}
                               onChange={e => setEditingMsgText(e.target.value)}
                               autoFocus
                             />
                             <div className="flex justify-end gap-2 mt-2">
-                              <button onClick={handleEditMsgCancel} className="px-3 py-1.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors">Cancelar</button>
-                              <button onClick={handleEditMsgSave} disabled={!editingMsgText.trim()} className="px-3 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors shadow-sm disabled:opacity-50">Guardar</button>
+                              <button onClick={handleEditMsgCancel} className="px-3 py-1.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg transition-colors shadow-sm">Cancelar</button>
+                              <button onClick={handleEditMsgSave} disabled={!editingMsgText.trim()} className="px-3 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors shadow-sm disabled:opacity-50">Guardar Cambios</button>
                             </div>
                           </div>
                         ) : (
@@ -1490,17 +1559,18 @@
                         value={interactionType}
                         onChange={(e) => setInteractionType(e.target.value)}
                       >
-                        <option value="asesor">Mi Oferta / Acción</option>
-                        <option value="alumno">Respuesta del Alumno</option>
+                        <option value="indagacion">Indago el problema</option>
+                        <option value="seguimiento">Seguimiento y negociación</option>
+                        <option value="cierre">Cierre</option>
                       </select>
-                      <span className="text-xs text-slate-400 italic">Selecciona el tipo de registro a añadir.</span>
+                      <span className="text-xs text-slate-400 italic hidden sm:inline">Selecciona la etapa.</span>
                     </div>
                     
                     <div className="relative">
                       <textarea 
-                        rows={2}
+                        rows={3}
                         className="w-full bg-white border border-slate-300 rounded-xl p-3 pb-12 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none custom-scrollbar transition-all"
-                        placeholder="Redacta la observación, la oferta otorgada o la contestación obtenida..."
+                        placeholder="Redacta la observación, puedes escribir a mano y presionar ✨ para corregir la redacción con IA, o usar el micrófono..."
                         value={newInteraction}
                         onChange={(e) => setNewInteraction(e.target.value)}
                       ></textarea>
@@ -1508,6 +1578,20 @@
                       <div className="absolute bottom-3 right-3 flex items-center gap-2">
                         {isProcessing && <span className="text-[10px] text-indigo-600 font-bold animate-pulse">Corrigiendo redacción (IA)...</span>}
                         {isRecording && <span className="text-[10px] text-red-600 font-bold animate-pulse">Grabando (Apreta el micrófono para detener)...</span>}
+                        
+                        <button
+                          type="button"
+                          onClick={handleManualCorrection}
+                          disabled={isProcessing || isRecording || !newInteraction.trim()}
+                          title="Corregir redacción escrita con IA"
+                          className={`p-2 rounded-full transition-all shadow-sm ${
+                            isProcessing ? 'bg-indigo-100 text-indigo-500 cursor-wait' : 
+                            'bg-slate-100 text-slate-600 hover:bg-indigo-100 hover:text-indigo-600 disabled:opacity-50'
+                          }`}
+                        >
+                          <Sparkles size={16} />
+                        </button>
+
                         <button
                           type="button"
                           onClick={toggleDictation}
@@ -1516,7 +1600,7 @@
                           className={`p-2 rounded-full transition-all shadow-sm ${
                             isRecording ? 'bg-red-500 text-white animate-pulse' : 
                             isProcessing ? 'bg-indigo-100 text-indigo-500 cursor-wait' : 
-                            'bg-slate-100 text-slate-600 hover:bg-indigo-100 hover:text-indigo-600'
+                            'bg-slate-100 text-slate-600 hover:bg-indigo-100 hover:text-indigo-600 disabled:opacity-50'
                           }`}
                         >
                           {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <Mic size={16} />}
