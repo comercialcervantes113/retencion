@@ -11,6 +11,9 @@
   <!-- Babel para compilar React en el navegador -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   
+  <!-- SheetJS para exportar a Excel real (.xlsx) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
   <!-- Mapa de Importación para React y Lucide Icons (Permite usarlos en HTML sin NodeJS) -->
   <script type="importmap">
   {
@@ -41,7 +44,7 @@
   <script type="text/babel" data-type="module">
     import React, { useState, useEffect, useMemo } from 'react';
     import { createRoot } from 'react-dom/client';
-    import { LayoutDashboard, Users, UserPlus, MessageCircle, Phone, Search, Filter, Sparkles, Save, ChevronRight, ArrowLeft, CheckCircle2, AlertCircle, XCircle, Clock, Edit2, Trash2, Archive, Database } from 'lucide-react';
+    import { LayoutDashboard, Users, UserPlus, MessageCircle, Phone, Search, Filter, Sparkles, Save, ChevronRight, ArrowLeft, CheckCircle2, AlertCircle, XCircle, Clock, Edit2, Trash2, Archive, Database, Download } from 'lucide-react';
     
     // --- INTEGRACIÓN DE FIREBASE ---
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
@@ -177,6 +180,33 @@
         }
       };
 
+      // Función para exportar casos a Excel Real (.xlsx)
+      const handleExportExcel = () => {
+        // Preparamos los datos estructurados para Excel
+        const dataToExport = cases.map(c => ({
+          'Nº Caso': c.caseNumber,
+          'Matrícula': c.matricula,
+          'Nombre': c.nombre,
+          'Teléfono': c.telefono,
+          'Carrera': c.carrera,
+          'Modalidad': c.modalidad || 'No especificada',
+          'Motivo': c.motivo,
+          'Estado': c.estado,
+          'Empresa Amiga': c.empresaAmiga ? 'Sí' : 'No',
+          'Nombre Empresa': c.nombreEmpresa || '-',
+          'Observaciones': c.observacion || '',
+          'Fecha de Registro': c.fecha
+        }));
+
+        // Crear hoja de trabajo y libro usando la librería SheetJS (XLSX)
+        const worksheet = window.XLSX.utils.json_to_sheet(dataToExport);
+        const workbook = window.XLSX.utils.book_new();
+        window.XLSX.utils.book_append_sheet(workbook, worksheet, "Casos Retención");
+
+        // Generar y descargar el archivo .xlsx
+        window.XLSX.writeFile(workbook, `Casos_Retencion_${new Date().toISOString().split('T')[0]}.xlsx`);
+      };
+
       if (loading) {
         return (
           <div className="flex h-screen w-full items-center justify-center bg-slate-50">
@@ -235,6 +265,16 @@
               >
                 <LayoutDashboard size={20} /> Dashboard
               </button>
+              
+              <div className="pt-6 pb-2">
+                <div className="border-t border-slate-700/50 mb-4"></div>
+                <button 
+                  onClick={handleExportExcel}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg transition-colors bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600 hover:text-white border border-emerald-600/30"
+                >
+                  <Download size={18} /> Descargar Excel
+                </button>
+              </div>
             </nav>
 
             {/* Monitor de Uso Firebase */}
@@ -354,7 +394,7 @@
             
             <div className="bg-emerald-50/60 backdrop-blur-md p-6 rounded-3xl shadow-lg border border-emerald-100/80 relative overflow-hidden transform transition-all hover:-translate-y-1">
               <div className="absolute -right-6 -top-6 opacity-20 text-emerald-500"><CheckCircle2 size={120} /></div>
-              <p className="text-xs text-emerald-700 font-bold mb-2 uppercase tracking-widest relative z-10">Retenidos (Archivados)</p>
+              <p className="text-xs text-emerald-700 font-bold mb-2 uppercase tracking-widest relative z-10">Retenidos</p>
               <div className="flex items-end gap-2 relative z-10">
                 <p className="text-5xl font-extrabold text-emerald-600">{retained}</p>
                 <p className="text-xl font-bold text-emerald-500 mb-1">({retainedPct}%)</p>
@@ -363,7 +403,7 @@
 
             <div className="bg-red-50/60 backdrop-blur-md p-6 rounded-3xl shadow-lg border border-red-100/80 relative overflow-hidden transform transition-all hover:-translate-y-1">
               <div className="absolute -right-6 -top-6 opacity-20 text-red-500"><XCircle size={120} /></div>
-              <p className="text-xs text-red-700 font-bold mb-2 uppercase tracking-widest relative z-10">Bajas (Archivadas)</p>
+              <p className="text-xs text-red-700 font-bold mb-2 uppercase tracking-widest relative z-10">Bajas</p>
               <div className="flex items-end gap-2 relative z-10">
                 <p className="text-5xl font-extrabold text-red-600">{dropped}</p>
                 <p className="text-xl font-bold text-red-500 mb-1">({droppedPct}%)</p>
@@ -372,7 +412,7 @@
 
             <div className="bg-indigo-50/60 backdrop-blur-md p-6 rounded-3xl shadow-lg border border-indigo-100/80 relative overflow-hidden transform transition-all hover:-translate-y-1">
               <div className="absolute -right-6 -top-6 opacity-20 text-indigo-500"><Clock size={120} /></div>
-              <p className="text-xs text-indigo-700 font-bold mb-2 uppercase tracking-widest relative z-10">En Gestión (Activos)</p>
+              <p className="text-xs text-indigo-700 font-bold mb-2 uppercase tracking-widest relative z-10">En Gestión</p>
               <div className="flex items-end gap-2 relative z-10">
                 <p className="text-5xl font-extrabold text-indigo-600">{inProgress}</p>
                 <p className="text-xl font-bold text-indigo-500 mb-1">({inProgressPct}%)</p>
