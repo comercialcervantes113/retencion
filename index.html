@@ -1,0 +1,947 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RetenciónApp - Gestión Estudiantil</title>
+  
+  <!-- Tailwind CSS para los estilos modernos -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Babel para compilar React en el navegador -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <!-- Mapa de Importación para React y Lucide Icons (Permite usarlos en HTML sin NodeJS) -->
+  <script type="importmap">
+  {
+    "imports": {
+      "react": "https://esm.sh/react@18.2.0",
+      "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+      "lucide-react": "https://esm.sh/lucide-react@0.344.0"
+    }
+  }
+  </script>
+  
+  <style>
+    /* Animación simple para los formularios y alertas */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .animate-fade-in {
+      animation: fadeIn 0.3s ease-out forwards;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 font-sans text-slate-800">
+  
+  <div id="root"></div>
+
+  <!-- Script principal de la Aplicación -->
+  <script type="text/babel" data-type="module">
+    import React, { useState, useEffect, useMemo } from 'react';
+    import { createRoot } from 'react-dom/client';
+    import { LayoutDashboard, Users, UserPlus, MessageCircle, Phone, Search, Filter, Sparkles, Save, ChevronRight, ArrowLeft, CheckCircle2, AlertCircle, XCircle, Clock, Edit2, Trash2 } from 'lucide-react';
+    
+    // --- INTEGRACIÓN DE FIREBASE ---
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+    import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+
+    // Configuración proporcionada por el usuario
+    const firebaseConfig = {
+      apiKey: "AIzaSyBv_sA7DuRKtbDMjDZJSVgzKdMU0YPzGFM",
+      authDomain: "retencion-47a35.firebaseapp.com",
+      projectId: "retencion-47a35",
+      storageBucket: "retencion-47a35.firebasestorage.app",
+      messagingSenderId: "166511405178",
+      appId: "1:166511405178:web:cf333e09c163fd712bf3c3",
+      measurementId: "G-XKJP1X79T8"
+    };
+
+    const firebaseApp = initializeApp(firebaseConfig);
+    const auth = getAuth(firebaseApp);
+    const db = getFirestore(firebaseApp);
+
+    // --- CONFIGURACIÓN Y CONSTANTES ---
+    const CAREERS = [
+      { name: 'Administración de Empresas', hex: '#8DA248', modalities: ['Presencial', 'Semipresencial'] },
+      { name: 'Recursos Humanos', hex: '#B388C2', modalities: ['Presencial', 'Semipresencial', 'Distancia'] },
+      { name: 'Marketing', hex: '#FA5D0F', modalities: ['Semipresencial', 'Distancia'] },
+      { name: 'Analista de Sistemas', hex: '#00B1E1', modalities: ['Presencial', 'Semipresencial'] },
+      { name: 'Desarrollo Web', hex: '#A8927D', modalities: ['Semipresencial'] },
+      { name: 'Inteligencia Artificial', hex: '#2D4693', modalities: ['Semipresencial'] },
+      { name: 'Higiene y Seguridad', hex: '#F4C01E', modalities: ['Presencial', 'Semipresencial'] },
+      { name: 'Gestión Inmobiliaria', hex: '#BB242A', modalities: ['Presencial', 'Semipresencial', 'Distancia'] }
+    ];
+
+    const MODALITY_RULES = {
+      'Presencial': '3 o 4 días de cursado. Aula híbrida (flexible). Examen final presencial en la institución.',
+      'Semipresencial': '1 vez por semana. Aula híbrida (flexible). Examen final sincrónico con profesor.',
+      'Distancia': 'Contenidos en autogestión/Teams (grabados). Examen sincrónico. Tutorías y 3 encuentros opcionales. Chat con respuesta en 24hs.'
+    };
+
+    const STATUSES = ['Solicitud de baja', 'En seguimiento', 'Retenido', 'Baja definitiva'];
+    const REASONS = ['Económico', 'Falta de tiempo / Horarios', 'Laboral', 'Académico', 'Personal / Salud', 'Otro'];
+
+    // --- COMPONENTE PRINCIPAL (APP) ---
+    function App() {
+      const [cases, setCases] = useState([]);
+      const [currentView, setCurrentView] = useState('list'); 
+      const [selectedCaseId, setSelectedCaseId] = useState(null);
+      const [user, setUser] = useState(null);
+      const [loading, setLoading] = useState(true);
+
+      // 1. Iniciar sesión anónima en Firebase
+      useEffect(() => {
+        const initAuth = async () => {
+          try {
+            await signInAnonymously(auth);
+          } catch (error) {
+            console.error("Error al iniciar sesión anónima:", error);
+          }
+        };
+        initAuth();
+        const unsubscribe = onAuthStateChanged(auth, setUser);
+        return () => unsubscribe();
+      }, []);
+
+      // 2. Escuchar datos en tiempo real desde Firestore
+      useEffect(() => {
+        if (!user) return; // Esperar a que esté autenticado
+
+        const casesRef = collection(db, 'casos');
+        const unsubscribe = onSnapshot(casesRef, (snapshot) => {
+          const data = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          }));
+          
+          // Ordenar del más reciente al más antiguo lógicamente
+          data.sort((a, b) => {
+            const numA = parseInt((a.caseNumber || '').split('-')[1] || '0');
+            const numB = parseInt((b.caseNumber || '').split('-')[1] || '0');
+            return numB - numA;
+          });
+
+          setCases(data);
+          setLoading(false);
+        }, (error) => {
+          console.error("Error al sincronizar con Firebase:", error);
+          setLoading(false);
+        });
+
+        return () => unsubscribe();
+      }, [user]);
+
+      const navigateTo = (view, caseId = null) => {
+        setCurrentView(view);
+        setSelectedCaseId(caseId);
+      };
+
+      const handleSaveCase = async (newCase) => {
+        try {
+          if (newCase.id) {
+            // Actualizar caso existente
+            const docRef = doc(db, 'casos', newCase.id);
+            const { id, ...caseData } = newCase;
+            await updateDoc(docRef, caseData);
+          } else {
+            // Crear caso nuevo
+            const casesRef = collection(db, 'casos');
+            const currentCount = cases.length + 1;
+            const caseNumber = `CASO-${String(currentCount).padStart(3, '0')}`;
+            await addDoc(casesRef, { ...newCase, caseNumber, fecha: new Date().toISOString().split('T')[0] });
+          }
+          navigateTo('list');
+        } catch (error) {
+          console.error("Error al guardar en Firebase:", error);
+        }
+      };
+
+      const handleDeleteCase = async (id) => {
+        try {
+          const docRef = doc(db, 'casos', id);
+          await deleteDoc(docRef);
+          navigateTo('list');
+        } catch (error) {
+          console.error("Error al eliminar de Firebase:", error);
+        }
+      };
+
+      if (loading) {
+        return (
+          <div className="flex h-screen w-full items-center justify-center bg-slate-50">
+            <div className="flex flex-col items-center gap-4">
+              <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+              <p className="text-indigo-600 font-bold animate-pulse">Conectando con la base de datos...</p>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="flex h-screen w-full overflow-hidden">
+          {/* Sidebar */}
+          <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col shadow-xl z-10 flex-shrink-0">
+            <div className="p-6">
+              <h1 className="text-xl font-bold text-white flex items-center gap-2">
+                <Users className="text-indigo-400" />
+                <span>RetenciónApp</span>
+              </h1>
+              <p className="text-xs text-slate-400 mt-1">Gestión de Bajas Estudiantiles</p>
+            </div>
+            
+            <nav className="flex-1 px-4 space-y-2 mt-4">
+              <button 
+                onClick={() => navigateTo('list')}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${currentView === 'list' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'}`}
+              >
+                <Users size={20} /> Casos Activos
+              </button>
+              <button 
+                onClick={() => navigateTo('new')}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${currentView === 'new' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'}`}
+              >
+                <UserPlus size={20} /> Registrar Caso
+              </button>
+              <button 
+                onClick={() => navigateTo('dashboard')}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${currentView === 'dashboard' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'}`}
+              >
+                <LayoutDashboard size={20} /> Dashboard
+              </button>
+            </nav>
+          </aside>
+
+          {/* Main Content */}
+          <main className="flex-1 overflow-y-auto relative bg-slate-50 w-full h-full">
+            <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 p-6 flex justify-between items-center sticky top-0 z-20 shadow-sm">
+              <h2 className="text-2xl font-semibold text-slate-800 capitalize">
+                {currentView === 'dashboard' && 'Panel de Control'}
+                {currentView === 'list' && 'Listado de Casos'}
+                {currentView === 'new' && (selectedCaseId ? 'Editar Caso' : 'Registrar Nuevo Caso')}
+                {currentView === 'detail' && 'Detalle y Gestión del Caso'}
+              </h2>
+            </header>
+
+            <div className="p-8 relative z-10">
+              {currentView === 'dashboard' && <Dashboard cases={cases} />}
+              {currentView === 'list' && <CaseList cases={cases} onSelect={(id) => navigateTo('detail', id)} />}
+              {currentView === 'new' && (
+                <CaseForm 
+                  caseToEdit={selectedCaseId ? cases.find(c => c.id === selectedCaseId) : null} 
+                  onSave={handleSaveCase} 
+                  onCancel={() => navigateTo('list')} 
+                />
+              )}
+              {currentView === 'detail' && (
+                <CaseDetail 
+                  caseData={cases.find(c => c.id === selectedCaseId)} 
+                  onBack={() => navigateTo('list')} 
+                  onUpdate={handleSaveCase}
+                  onEdit={(id) => navigateTo('new', id)}
+                  onDelete={handleDeleteCase}
+                />
+              )}
+            </div>
+          </main>
+        </div>
+      );
+    }
+
+    // --- DASHBOARD COMPONENT ---
+    function Dashboard({ cases }) {
+      const [filterCareer, setFilterCareer] = useState('');
+      const [filterReason, setFilterReason] = useState('');
+      const [filterStatus, setFilterStatus] = useState('');
+
+      const filteredCases = useMemo(() => {
+        return cases.filter(c => {
+          if (filterCareer && c.carrera !== filterCareer) return false;
+          if (filterReason && c.motivo !== filterReason) return false;
+          if (filterStatus && c.estado !== filterStatus) return false;
+          return true;
+        });
+      }, [cases, filterCareer, filterReason, filterStatus]);
+
+      const total = filteredCases.length;
+      const retained = filteredCases.filter(c => c.estado === 'Retenido').length;
+      const dropped = filteredCases.filter(c => c.estado === 'Baja definitiva').length;
+      const inProgress = filteredCases.filter(c => c.estado === 'En seguimiento' || c.estado === 'Solicitud de baja').length;
+
+      const retainedPct = total === 0 ? 0 : Math.round((retained / total) * 100);
+      const droppedPct = total === 0 ? 0 : Math.round((dropped / total) * 100);
+      const inProgressPct = total === 0 ? 0 : Math.round((inProgress / total) * 100);
+
+      return (
+        <div className="space-y-6 relative z-0">
+          <div className="absolute top-0 left-0 w-full h-full overflow-hidden -z-10 rounded-2xl pointer-events-none">
+            <div className="absolute -top-10 -left-10 w-72 h-72 bg-purple-300 rounded-full mix-blend-multiply filter blur-3xl opacity-40 animate-pulse"></div>
+            <div className="absolute top-10 -right-10 w-72 h-72 bg-indigo-300 rounded-full mix-blend-multiply filter blur-3xl opacity-40 animate-pulse" style={{ animationDelay: '2s' }}></div>
+            <div className="absolute -bottom-10 left-1/3 w-72 h-72 bg-pink-200 rounded-full mix-blend-multiply filter blur-3xl opacity-40 animate-pulse" style={{ animationDelay: '4s' }}></div>
+          </div>
+
+          <div className="bg-white/50 backdrop-blur-md p-4 rounded-2xl shadow-sm border border-white/60 flex flex-wrap gap-4 items-center">
+            <Filter className="text-indigo-600" size={20} />
+            <span className="font-semibold text-slate-700">Filtros:</span>
+            <select className="bg-white/60 backdrop-blur-sm border border-white/50 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium" value={filterCareer} onChange={e => setFilterCareer(e.target.value)}>
+              <option value="">Todas las Carreras</option>
+              {CAREERS.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+            </select>
+            <select className="bg-white/60 backdrop-blur-sm border border-white/50 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium" value={filterReason} onChange={e => setFilterReason(e.target.value)}>
+              <option value="">Todos los Motivos</option>
+              {REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+            <select className="bg-white/60 backdrop-blur-sm border border-white/50 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+              <option value="">Todos los Estados</option>
+              {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="bg-white/60 backdrop-blur-md p-6 rounded-3xl shadow-lg border border-white/80 flex flex-col justify-center transform transition-all hover:-translate-y-1">
+              <p className="text-xs text-slate-500 font-bold mb-2 uppercase tracking-widest">Total de Casos</p>
+              <p className="text-5xl font-extrabold text-slate-800 bg-clip-text text-transparent bg-gradient-to-br from-slate-700 to-slate-900">{total}</p>
+            </div>
+            
+            <div className="bg-emerald-50/60 backdrop-blur-md p-6 rounded-3xl shadow-lg border border-emerald-100/80 relative overflow-hidden transform transition-all hover:-translate-y-1">
+              <div className="absolute -right-6 -top-6 opacity-20 text-emerald-500"><CheckCircle2 size={120} /></div>
+              <p className="text-xs text-emerald-700 font-bold mb-2 uppercase tracking-widest relative z-10">Retenidos</p>
+              <div className="flex items-end gap-2 relative z-10">
+                <p className="text-5xl font-extrabold text-emerald-600">{retained}</p>
+                <p className="text-xl font-bold text-emerald-500 mb-1">({retainedPct}%)</p>
+              </div>
+            </div>
+
+            <div className="bg-red-50/60 backdrop-blur-md p-6 rounded-3xl shadow-lg border border-red-100/80 relative overflow-hidden transform transition-all hover:-translate-y-1">
+              <div className="absolute -right-6 -top-6 opacity-20 text-red-500"><XCircle size={120} /></div>
+              <p className="text-xs text-red-700 font-bold mb-2 uppercase tracking-widest relative z-10">Bajas Consumadas</p>
+              <div className="flex items-end gap-2 relative z-10">
+                <p className="text-5xl font-extrabold text-red-600">{dropped}</p>
+                <p className="text-xl font-bold text-red-500 mb-1">({droppedPct}%)</p>
+              </div>
+            </div>
+
+            <div className="bg-indigo-50/60 backdrop-blur-md p-6 rounded-3xl shadow-lg border border-indigo-100/80 relative overflow-hidden transform transition-all hover:-translate-y-1">
+              <div className="absolute -right-6 -top-6 opacity-20 text-indigo-500"><Clock size={120} /></div>
+              <p className="text-xs text-indigo-700 font-bold mb-2 uppercase tracking-widest relative z-10">En Gestión</p>
+              <div className="flex items-end gap-2 relative z-10">
+                <p className="text-5xl font-extrabold text-indigo-600">{inProgress}</p>
+                <p className="text-xl font-bold text-indigo-500 mb-1">({inProgressPct}%)</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white/60 backdrop-blur-md p-8 rounded-3xl shadow-lg border border-white/80">
+            <h3 className="font-bold text-slate-800 mb-8 text-lg">Distribución de Resultados Globales</h3>
+            <div className="relative w-full h-12 bg-slate-200/50 rounded-2xl overflow-hidden flex shadow-inner backdrop-blur-sm">
+              {total > 0 ? (
+                <>
+                  <div style={{ width: `${retainedPct}%` }} className="bg-gradient-to-r from-emerald-400 to-emerald-500 h-full flex items-center justify-center text-sm text-white font-bold transition-all duration-700 shadow-[inset_0_2px_4px_rgba(255,255,255,0.3)]">
+                    {retainedPct > 8 && `${retainedPct}%`}
+                  </div>
+                  <div style={{ width: `${inProgressPct}%` }} className="bg-gradient-to-r from-indigo-300 to-indigo-400 h-full flex items-center justify-center text-sm text-white font-bold transition-all duration-700 shadow-[inset_0_2px_4px_rgba(255,255,255,0.3)] border-l border-white/20">
+                    {inProgressPct > 8 && `${inProgressPct}%`}
+                  </div>
+                  <div style={{ width: `${droppedPct}%` }} className="bg-gradient-to-r from-red-400 to-red-500 h-full flex items-center justify-center text-sm text-white font-bold transition-all duration-700 shadow-[inset_0_2px_4px_rgba(255,255,255,0.3)] border-l border-white/20">
+                    {droppedPct > 8 && `${droppedPct}%`}
+                  </div>
+                </>
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-sm text-slate-500 font-medium">No hay datos suficientes</div>
+              )}
+            </div>
+            
+            <div className="flex gap-6 mt-6 justify-center">
+              <div className="flex items-center gap-2 bg-emerald-50/80 px-4 py-2 rounded-xl border border-emerald-100 shadow-sm"><span className="w-4 h-4 rounded-full bg-gradient-to-r from-emerald-400 to-emerald-500 shadow-sm"></span> <span className="text-sm font-bold text-emerald-800">Retenidos</span></div>
+              <div className="flex items-center gap-2 bg-indigo-50/80 px-4 py-2 rounded-xl border border-indigo-100 shadow-sm"><span className="w-4 h-4 rounded-full bg-gradient-to-r from-indigo-300 to-indigo-400 shadow-sm"></span> <span className="text-sm font-bold text-indigo-800">En Gestión</span></div>
+              <div className="flex items-center gap-2 bg-red-50/80 px-4 py-2 rounded-xl border border-red-100 shadow-sm"><span className="w-4 h-4 rounded-full bg-gradient-to-r from-red-400 to-red-500 shadow-sm"></span> <span className="text-sm font-bold text-red-800">Bajas</span></div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // --- CASE LIST COMPONENT ---
+    function CaseList({ cases, onSelect }) {
+      const [searchTerm, setSearchTerm] = useState('');
+
+      const filtered = cases.filter(c => 
+        c.nombre.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        c.matricula.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (c.caseNumber && c.caseNumber.toLowerCase().includes(searchTerm.toLowerCase()))
+      );
+
+      const getInitials = (name) => {
+        return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+      };
+
+      return (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+          <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-white">
+            <h3 className="font-bold text-lg text-slate-800">Directorio de Casos Activos</h3>
+            <div className="relative w-80">
+              <Search className="absolute left-3 top-2.5 text-slate-400" size={18} />
+              <input 
+                type="text"
+                placeholder="Buscar por nombre, matrícula..."
+                className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50/50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-100">
+                  <th className="p-5 font-semibold">Matrícula</th>
+                  <th className="p-5 font-semibold">Alumno</th>
+                  <th className="p-5 font-semibold">Carrera</th>
+                  <th className="p-5 font-semibold">Estado</th>
+                  <th className="p-5 font-semibold text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filtered.length === 0 ? (
+                  <tr><td colSpan="5" className="p-10 text-center text-slate-500 font-medium">No se encontraron casos registrados.</td></tr>
+                ) : (
+                  filtered.map(c => {
+                    const careerInfo = CAREERS.find(car => car.name === c.carrera) || CAREERS[0];
+                    return (
+                      <tr key={c.id} className="hover:bg-slate-50/80 transition-all cursor-pointer group" onClick={() => onSelect(c.id)}>
+                        <td className="p-5">
+                          <div className="font-mono text-sm font-bold text-indigo-600 bg-indigo-50 inline-block px-2.5 py-1 rounded-md">{c.matricula}</div>
+                        </td>
+                        <td className="p-5">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-inner" style={{ backgroundColor: careerInfo.hex }}>
+                              {getInitials(c.nombre)}
+                            </div>
+                            <div>
+                              <div className="font-bold text-slate-800">{c.nombre}</div>
+                              <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5"><Phone size={10} /> {c.telefono}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="p-5">
+                          <span 
+                            style={{ backgroundColor: careerInfo.hex + '1A', color: careerInfo.hex, borderColor: careerInfo.hex + '40' }}
+                            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border"
+                          >
+                            <span style={{ backgroundColor: careerInfo.hex }} className="w-1.5 h-1.5 rounded-full"></span>
+                            {c.carrera}
+                          </span>
+                        </td>
+                        <td className="p-5">
+                          <StatusBadge status={c.estado} />
+                        </td>
+                        <td className="p-5 text-right">
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); onSelect(c.id); }}
+                            className="p-2 text-slate-400 group-hover:text-indigo-600 group-hover:bg-indigo-50 rounded-xl transition-all inline-flex items-center gap-1 font-semibold text-sm"
+                          >
+                            Gestionar <ChevronRight size={16} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    }
+
+    function StatusBadge({ status }) {
+      let styles = "bg-slate-100 text-slate-700";
+      if (status === 'Retenido') styles = "bg-emerald-100 text-emerald-800 border border-emerald-200";
+      if (status === 'En seguimiento') styles = "bg-indigo-100 text-indigo-800 border border-indigo-200";
+      if (status === 'Solicitud de baja') styles = "bg-amber-100 text-amber-800 border border-amber-200";
+      if (status === 'Baja definitiva') styles = "bg-red-100 text-red-800 border border-red-200";
+
+      return <span className={`px-2.5 py-1.5 rounded-md text-xs font-bold shadow-sm ${styles}`}>{status}</span>;
+    }
+
+    // --- CASE FORM COMPONENT ---
+    function CaseForm({ caseToEdit = null, onSave, onCancel }) {
+      const [formData, setFormData] = useState(caseToEdit || {
+        matricula: '', nombre: '', telefono: '', carrera: CAREERS[0].name, estado: 'Solicitud de baja', motivo: REASONS[0], empresaAmiga: false, nombreEmpresa: '', observacion: ''
+      });
+
+      useEffect(() => {
+        if (caseToEdit) setFormData(caseToEdit);
+      }, [caseToEdit]);
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        onSave(formData);
+      };
+
+      const careerInfo = CAREERS.find(c => c.name === formData.carrera) || CAREERS[0];
+      
+      return (
+        <div 
+          className="max-w-2xl mx-auto bg-white rounded-2xl shadow-md border-t-4 p-8 transition-all duration-300 animate-fade-in"
+          style={{ borderTopColor: careerInfo.hex }}
+        >
+          <div className="flex items-center gap-3 mb-6 border-b pb-4 border-slate-100">
+            <div className="p-2.5 rounded-xl" style={{ backgroundColor: careerInfo.hex + '20', color: careerInfo.hex }}>
+              {caseToEdit ? <Edit2 size={24} /> : <UserPlus size={24} />}
+            </div>
+            <h3 className="text-xl font-bold text-slate-800">
+              {caseToEdit ? 'Editar Caso Existente' : 'Datos del Alumno y Motivo de Baja'}
+            </h3>
+          </div>
+          
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div className="grid grid-cols-2 gap-5">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">Matrícula</label>
+                <input required type="text" className="w-full border border-slate-300 rounded-xl p-2.5 focus:ring-2 outline-none transition-shadow"
+                  style={{ '--tw-ring-color': careerInfo.hex }}
+                  value={formData.matricula} onChange={e => setFormData({...formData, matricula: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">Nombre y Apellido</label>
+                <input required type="text" className="w-full border border-slate-300 rounded-xl p-2.5 focus:ring-2 outline-none transition-shadow"
+                  style={{ '--tw-ring-color': careerInfo.hex }}
+                  value={formData.nombre} onChange={e => setFormData({...formData, nombre: e.target.value})} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-5">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">Teléfono (WhatsApp)</label>
+                <input required type="text" placeholder="Ej: 5493512345678" className="w-full border border-slate-300 rounded-xl p-2.5 focus:ring-2 outline-none transition-shadow"
+                  style={{ '--tw-ring-color': careerInfo.hex }}
+                  value={formData.telefono} onChange={e => setFormData({...formData, telefono: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">Carrera</label>
+                <select className="w-full border border-slate-300 rounded-xl p-2.5 focus:ring-2 outline-none transition-shadow"
+                  style={{ '--tw-ring-color': careerInfo.hex }}
+                  value={formData.carrera} onChange={e => setFormData({...formData, carrera: e.target.value})}>
+                  {CAREERS.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-5">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">Motivo principal</label>
+                <select className="w-full border border-slate-300 rounded-xl p-2.5 focus:ring-2 outline-none transition-shadow"
+                  style={{ '--tw-ring-color': careerInfo.hex }}
+                  value={formData.motivo} onChange={e => setFormData({...formData, motivo: e.target.value})}>
+                  {REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">Estado del caso</label>
+                <select className="w-full border border-slate-300 rounded-xl p-2.5 focus:ring-2 outline-none transition-shadow"
+                  style={{ '--tw-ring-color': careerInfo.hex }}
+                  value={formData.estado} onChange={e => setFormData({...formData, estado: e.target.value})}>
+                  {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+              <div className="flex items-center gap-2">
+                <input type="checkbox" id="empresaAmiga" className="w-4 h-4 rounded border-gray-300 focus:ring-2"
+                  style={{ accentColor: careerInfo.hex }}
+                  checked={formData.empresaAmiga} onChange={e => setFormData({...formData, empresaAmiga: e.target.checked, nombreEmpresa: !e.target.checked ? '' : formData.nombreEmpresa})} />
+                <label htmlFor="empresaAmiga" className="text-sm font-bold text-slate-800 cursor-pointer">
+                  El alumno pertenece a una "Empresa Amiga" (Ya posee 20% desc.)
+                </label>
+              </div>
+              {formData.empresaAmiga && (
+                <div className="pl-6 animate-fade-in">
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">Nombre de la Empresa</label>
+                  <input required type="text" placeholder="Ej: Naranja X, Apex..." className="w-full border border-slate-300 rounded-lg p-2 focus:ring-2 outline-none text-sm transition-shadow"
+                    style={{ '--tw-ring-color': careerInfo.hex }}
+                    value={formData.nombreEmpresa} onChange={e => setFormData({...formData, nombreEmpresa: e.target.value})} />
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1">Observaciones / Inquietudes</label>
+              <textarea required rows={4} className="w-full border border-slate-300 rounded-xl p-2.5 focus:ring-2 outline-none transition-shadow"
+                style={{ '--tw-ring-color': careerInfo.hex }}
+                placeholder="Detalla la situación del alumno..."
+                value={formData.observacion} onChange={e => setFormData({...formData, observacion: e.target.value})}></textarea>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4">
+              <button type="button" onClick={onCancel} className="px-5 py-2.5 border border-slate-300 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition-colors">
+                Cancelar
+              </button>
+              <button 
+                type="submit" 
+                className="px-5 py-2.5 text-white font-bold rounded-xl flex items-center gap-2 transition-all hover:opacity-90 shadow-sm"
+                style={{ backgroundColor: careerInfo.hex }}
+              >
+                <Save size={18} /> Guardar Caso
+              </button>
+            </div>
+          </form>
+        </div>
+      );
+    }
+
+    // --- CASE DETAIL & AI ASSISTANT COMPONENT ---
+    function CaseDetail({ caseData, onBack, onUpdate, onEdit, onDelete }) {
+      const [aiResponse, setAiResponse] = useState('');
+      const [isLoadingAi, setIsLoadingAi] = useState(false);
+      const [errorAi, setErrorAi] = useState('');
+      const [showDeleteModal, setShowDeleteModal] = useState(false);
+
+      if (!caseData) return null;
+
+      const careerInfo = CAREERS.find(c => c.name === caseData.carrera) || CAREERS[0];
+      const cleanPhone = caseData.telefono.replace(/\D/g, '');
+      
+      const currentDiscount = caseData.empresaAmiga ? 20 : 0;
+      const extraBaseOffer = caseData.empresaAmiga ? 10 : 20;
+      const totalBaseDiscount = currentDiscount + extraBaseOffer; 
+      const extraProofOffer = caseData.empresaAmiga ? 20 : 40;
+      const totalProofDiscount = currentDiscount + extraProofOffer; 
+
+      const isTimeIssue = caseData.motivo.includes('tiempo') || caseData.motivo.includes('Horarios');
+      const isEconIssue = caseData.motivo.includes('Económico');
+
+      const handleGenerateAI = async () => {
+        setIsLoadingAi(true);
+        setErrorAi('');
+        setAiResponse('');
+
+        // API KEY PARA EJECUCIÓN LOCAL:
+        // Si vas a abrir este HTML en tu computadora, pega tu clave de Gemini API dentro de las comillas vacías.
+        // Si lo estás corriendo en el visor en línea actual, el sistema la inyectará automáticamente.
+        const apiKey = ""; 
+        
+        const promptText = `
+          Eres un experto asesor de retención estudiantil universitaria. Tu objetivo es salvar la matrícula de un alumno que quiere darse de baja.
+          
+          DATOS DEL ALUMNO:
+          - Nombre: ${caseData.nombre}
+          - Carrera: ${caseData.carrera}
+          - Motivo principal de baja: ${caseData.motivo}
+          - Observación detallada: ${caseData.observacion}
+          - ¿Es de Empresa Amiga?: ${caseData.empresaAmiga ? `Sí (Empresa: ${caseData.nombreEmpresa || 'Registrada'} - Ya posee 20% de descuento).` : 'No'}
+
+          HERRAMIENTAS Y REGLAS ESTRICTAS DE NEGOCIACIÓN:
+          ${isTimeIssue && !isEconIssue ? `
+          [¡REGLA ABSOLUTA!]: El motivo de baja es netamente por FALTA DE TIEMPO / HORARIOS. 
+          TIENES PROHIBIDO ofrecer o mencionar descuentos económicos o dinero. 
+          Toda tu solución debe centrarse exclusivamente en la flexibilidad de las modalidades de cursado y las aulas híbridas detalladas a continuación.
+          ` : `
+          1. Ayuda Económica (Válida por este semestre, luego paga cuota normal):
+            - Tienes permiso para ofrecer como ayuda inicial un ${extraBaseOffer}% extra (Quedando en un ${totalBaseDiscount}% de descuento total).
+            - Solo si el alumno lo amerita y presenta documentación comprobable (ej. telegrama de despido), el máximo posible a otorgar es un ${extraProofOffer}% extra (Quedando en un ${totalProofDiscount}% MÁXIMO). NUNCA ofrezcas este máximo de entrada.
+          `}
+          
+          2. Flexibilidad de Modalidades para la carrera "${caseData.carrera}":
+            Las únicas modalidades viables para ofrecerle son: ${careerInfo.modalities.join(', ')}.
+            EXPLICACIÓN DE MODALIDADES PARA EL ALUMNO:
+            - Presencial: 3 a 4 días a la semana. Cuenta con AULA HÍBRIDA (el alumno decide clase a clase y con total libertad si ir a la institución físicamente o conectarse virtualmente). Examen final presencial.
+            - Semipresencial: Solo 1 vez a la semana. Cuenta con AULA HÍBRIDA (el alumno decide en el día si asistir físicamente o conectarse virtualmente). Examen final sincrónico online.
+            - Distancia: 100% online flexible. Contenidos en autogestión y Teams grabados. 3 encuentros opcionales de dudas. El profesor responde chat en 24hs. Examen final sincrónico online.
+
+          INSTRUCCIONES DE REDACCIÓN (PARA WHATSAPP):
+          - Escribe el mensaje que le enviarás directamente por WhatsApp.
+          - Tono: Profesional, ético, muy empático, claro y preciso. 
+          - Si hablas de las aulas híbridas, sé preciso: recalca la ventaja de poder elegir entre presencial y virtual clase a clase.
+          - No parezcas un robot enumerando cosas; actúa como un consejero humano genuinamente interesado en que no abandone sus estudios.
+        `;
+
+        const systemPrompt = "Eres un asistente de retención estudiantil experto en empatía y negociación.";
+
+        try {
+          const callApi = async (attempt = 1) => {
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: promptText }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] }
+              })
+            });
+
+            if (!response.ok) {
+              if (attempt < 5) {
+                await new Promise(r => setTimeout(r, Math.pow(2, attempt) * 1000));
+                return callApi(attempt + 1);
+              }
+              throw new Error('Falló la conexión con la IA después de varios intentos.');
+            }
+
+            const data = await response.json();
+            return data.candidates?.[0]?.content?.parts?.[0]?.text || "No se pudo generar una respuesta.";
+          };
+
+          const result = await callApi();
+          setAiResponse(result);
+        } catch (err) {
+          setErrorAi('Error al generar sugerencia. Verifica tu API Key o conexión.');
+        } finally {
+          setIsLoadingAi(false);
+        }
+      };
+
+      const updateStatus = (newStatus) => {
+        onUpdate({ ...caseData, estado: newStatus });
+      };
+
+      return (
+        <div className="space-y-6 relative animate-fade-in">
+          
+          {/* --- MODAL CONFIRMACIÓN ELIMINAR --- */}
+          {showDeleteModal && (
+            <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl animate-fade-in border border-slate-100">
+                <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mb-6 mx-auto">
+                  <Trash2 size={32} />
+                </div>
+                <h3 className="text-xl font-bold text-center text-slate-800 mb-2">¿Eliminar este caso?</h3>
+                <p className="text-center text-slate-500 font-medium mb-8">Esta acción es permanente y se borrará de Firebase.</p>
+                <div className="flex gap-3">
+                  <button 
+                    onClick={() => setShowDeleteModal(false)}
+                    className="flex-1 py-3 px-4 font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button 
+                    onClick={() => onDelete(caseData.id)}
+                    className="flex-1 py-3 px-4 font-bold text-white bg-red-500 hover:bg-red-600 rounded-xl transition-colors shadow-sm"
+                  >
+                    Sí, eliminar
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* --- HEADER SECUNDARIO: VOLVER Y ACCIONES --- */}
+          <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+            <button onClick={onBack} className="flex items-center gap-2 text-slate-500 hover:text-slate-800 transition-colors font-bold px-2 py-1">
+              <ArrowLeft size={18} /> Volver al listado
+            </button>
+            <div className="flex gap-2">
+              <button 
+                onClick={() => onEdit(caseData.id)}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+              >
+                <Edit2 size={16} /> Editar
+              </button>
+              <button 
+                onClick={() => setShowDeleteModal(true)}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-xl transition-colors"
+              >
+                <Trash2 size={16} /> Borrar
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-1 space-y-6">
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 border-t-4" style={{ borderTopColor: careerInfo.hex }}>
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <h3 className="text-2xl font-bold text-slate-800">{caseData.nombre}</h3>
+                    <p className="text-slate-500 font-medium">{caseData.caseNumber} • {caseData.matricula}</p>
+                  </div>
+                  <StatusBadge status={caseData.estado} />
+                </div>
+
+                <div className="space-y-4 mt-6">
+                  <div>
+                    <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Carrera</p>
+                    <span 
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-bold shadow-sm"
+                      style={{ backgroundColor: careerInfo.hex, color: '#FFFFFF' }}
+                    >
+                      {caseData.carrera}
+                    </span>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Motivo Principal</p>
+                    <div className="flex items-center gap-2 text-slate-700 bg-slate-100 px-3 py-2 rounded-xl font-bold border border-slate-200">
+                      <AlertCircle size={16} className={isTimeIssue ? "text-blue-500" : "text-amber-500"}/> {caseData.motivo}
+                    </div>
+                  </div>
+                  {caseData.empresaAmiga && (
+                    <div>
+                      <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Convenio Corporativo</p>
+                      <span className="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-bold bg-indigo-100 text-indigo-800 border border-indigo-200">
+                        Empresa Amiga: {caseData.nombreEmpresa || 'Sí'}
+                      </span>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Teléfono</p>
+                    <p className="text-slate-700 font-bold flex items-center gap-2">
+                      {caseData.telefono}
+                    </p>
+                  </div>
+                  <div className="pt-2">
+                    <a 
+                      href={`https://wa.me/${cleanPhone}`} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="w-full flex items-center justify-center gap-2 bg-[#25D366] hover:bg-[#128C7E] text-white py-3 rounded-xl font-bold transition-colors shadow-sm"
+                    >
+                      <MessageCircle size={18} /> Contactar por WhatsApp
+                    </a>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-amber-50 rounded-2xl shadow-sm border border-amber-200 p-6 relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-4 opacity-5 text-amber-500"><AlertCircle size={64} /></div>
+                <h4 className="font-bold text-amber-900 mb-2 flex items-center gap-2 relative z-10">
+                   Observaciones / Inquietudes
+                </h4>
+                <p className="text-amber-800 text-sm italic border-l-4 border-amber-400 pl-3 relative z-10">
+                  "{caseData.observacion}"
+                </p>
+              </div>
+
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                 <h4 className="font-bold text-slate-800 mb-4">Actualizar Estado</h4>
+                 <div className="grid grid-cols-1 gap-2">
+                    {STATUSES.map(s => (
+                      <button 
+                        key={s}
+                        onClick={() => updateStatus(s)}
+                        className={`text-left px-4 py-2.5 rounded-xl border transition-all ${caseData.estado === s ? 'bg-indigo-50 border-indigo-300 text-indigo-700 font-bold ring-1 ring-indigo-500' : 'border-slate-200 text-slate-600 font-medium hover:bg-slate-50'}`}
+                      >
+                        Marcar como: {s}
+                      </button>
+                    ))}
+                 </div>
+              </div>
+            </div>
+
+            <div className="lg:col-span-2 space-y-6">
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                <h3 className="text-lg font-bold text-slate-800 mb-4 border-b border-slate-100 pb-3 flex items-center gap-2">
+                  <Search className="text-indigo-500" /> Estrategia de Retención Calculada
+                </h3>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className={`rounded-xl p-5 border shadow-sm ${isTimeIssue && !isEconIssue ? 'bg-slate-50 border-slate-200' : 'bg-green-50 border-green-200'}`}>
+                    <h4 className={`font-bold mb-3 flex items-center gap-2 ${isTimeIssue && !isEconIssue ? 'text-slate-500' : 'text-green-900'}`}>
+                       Oferta Económica (Por el semestre)
+                    </h4>
+                    
+                    {isTimeIssue && !isEconIssue ? (
+                      <p className="text-sm text-slate-600 bg-white p-3 rounded-lg border border-slate-200 leading-relaxed font-medium">
+                        El motivo principal de baja es de <strong>Tiempo/Laboral</strong>. La estrategia no debe ser económica a menos que el alumno lo solicite expresamente. Enfoque exclusivo en Modalidades.
+                      </p>
+                    ) : (
+                      <ul className="space-y-3 text-sm text-green-800">
+                        {caseData.empresaAmiga && (
+                          <li className="flex justify-between items-center bg-green-200/50 p-2 rounded-lg font-medium">
+                            <span>Descuento Actual (Empresa Amiga):</span>
+                            <span className="font-bold">{currentDiscount}%</span>
+                          </li>
+                        )}
+                        <li className="flex justify-between items-center border-b border-green-200 pb-2">
+                          <span>Oferta a realizar (Extra {extraBaseOffer}%):</span>
+                          <span className="font-extrabold text-lg text-green-700">{totalBaseDiscount}% Total</span>
+                        </li>
+                        <li className="flex justify-between items-center pt-1">
+                          <span>Máx. c/Comprobante (Extra {extraProofOffer}%):</span>
+                          <span className="font-extrabold text-lg text-green-700">{totalProofDiscount}% Total</span>
+                        </li>
+                      </ul>
+                    )}
+                  </div>
+
+                  <div className="bg-blue-50 rounded-xl p-5 border border-blue-200 shadow-sm">
+                    <h4 className="font-bold text-blue-900 mb-3">Opciones de Cambio de Modalidad</h4>
+                    <div className="space-y-3">
+                      {careerInfo.modalities.map(mod => (
+                        <div key={mod} className="bg-white rounded-lg p-3 border border-blue-100 shadow-sm">
+                          <span className="font-bold text-blue-800 text-sm block mb-1">{mod}</span>
+                          <span className="text-xs text-slate-600 leading-relaxed font-medium block">{MODALITY_RULES[mod]}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-gradient-to-br from-indigo-900 via-indigo-800 to-purple-900 rounded-2xl shadow-lg border border-indigo-700 p-1">
+                <div className="bg-white rounded-xl p-6 h-full">
+                  <div className="flex justify-between items-center mb-4 border-b border-slate-100 pb-4">
+                    <div>
+                      <h3 className="text-lg font-bold text-indigo-900 flex items-center gap-2">
+                        <Sparkles className="text-indigo-500" /> Asistente IA de Negociación
+                      </h3>
+                      <p className="text-sm text-slate-500 mt-1 font-medium">
+                        Genera un mensaje de WhatsApp adaptado al motivo exacto y las ofertas calculadas.
+                      </p>
+                    </div>
+                    <button 
+                      onClick={handleGenerateAI}
+                      disabled={isLoadingAi}
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm"
+                    >
+                      {isLoadingAi ? 'Pensando...' : 'Generar Sugerencia IA'}
+                    </button>
+                  </div>
+
+                  {errorAi && (
+                    <div className="p-4 bg-red-50 text-red-700 rounded-xl mb-4 text-sm font-medium border border-red-200">
+                      {errorAi}
+                    </div>
+                  )}
+
+                  {aiResponse ? (
+                    <div className="relative animate-fade-in">
+                      <div className="bg-slate-50 rounded-xl p-6 border border-slate-200 text-slate-700 whitespace-pre-wrap font-sans text-sm leading-relaxed shadow-inner">
+                        {aiResponse}
+                      </div>
+                      <button 
+                        onClick={() => {
+                          navigator.clipboard.writeText(aiResponse).catch(() => {
+                            const textarea = document.createElement('textarea');
+                            textarea.value = aiResponse;
+                            document.body.appendChild(textarea);
+                            textarea.select();
+                            document.execCommand('copy');
+                            document.body.removeChild(textarea);
+                          });
+                        }}
+                        className="absolute top-3 right-3 bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shadow-sm"
+                      >
+                        Copiar texto
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="text-center py-12 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50">
+                      <Sparkles className="mx-auto text-slate-300 mb-3" size={40} />
+                      <p className="text-slate-500 font-medium max-w-sm mx-auto">Haz clic en generar para obtener una propuesta de mensaje completamente personalizada y ética.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Inicializar y renderizar la aplicación
+    const root = createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
