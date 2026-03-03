@@ -52,7 +52,7 @@
   <script type="text/babel" data-type="module">
     import React, { useState, useEffect, useMemo, useRef } from 'react';
     import { createRoot } from 'react-dom/client';
-    import { LayoutDashboard, Users, UserPlus, MessageCircle, Phone, Search, Filter, Save, ChevronRight, ArrowLeft, CheckCircle2, AlertCircle, XCircle, Clock, Edit2, Trash2, Archive, Database, Download, Send, User, MessageSquare } from 'lucide-react';
+    import { LayoutDashboard, Users, UserPlus, MessageCircle, Phone, Search, Filter, Save, ChevronRight, ArrowLeft, CheckCircle2, AlertCircle, XCircle, Clock, Edit2, Trash2, Archive, Database, Download, Send, User, MessageSquare, PlusCircle } from 'lucide-react';
     
     // --- INTEGRACIÓN DE FIREBASE ---
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
@@ -94,6 +94,7 @@
     const STATUSES = ['Solicitud de baja', 'En seguimiento', 'Retenido', 'Baja definitiva'];
     const REASONS = ['Económico', 'Falta de tiempo / Horarios', 'Laboral', 'Académico', 'Personal / Salud', 'Otro'];
     const STUDENT_TYPES = ['Ingresante', 'No inicio', 'No continua'];
+    const BAJA_SUBCATEGORIES = ['No quiere seguir en Cervantes', 'Solicita postergar para el próximo inicio', 'Otro'];
 
     // --- COMPONENTE PRINCIPAL (APP) ---
     function App() {
@@ -211,6 +212,11 @@
             historialTxt = c.observacion || '';
           }
 
+          let estadoExport = c.estado;
+          if (c.estado === 'Baja definitiva' && c.detalleBaja) {
+            estadoExport = `Baja definitiva (${c.detalleBaja})`;
+          }
+
           return {
             'Nº Caso': c.caseNumber,
             'Matrícula': c.matricula,
@@ -219,11 +225,11 @@
             'Carrera': c.carrera,
             'Modalidad': c.modalidad || 'No especificada',
             'Tipo Alumno': c.tipoAlumno && c.tipoAlumno.length > 0 ? c.tipoAlumno.join(', ') : 'No especificado',
-            'Motivo': c.motivo,
-            'Estado': c.estado,
+            'Motivo Principal': c.motivo,
+            'Estado': estadoExport,
             'Empresa Amiga': c.empresaAmiga ? 'Sí' : 'No',
             'Nombre Empresa': c.nombreEmpresa || '-',
-            'Historial de Negociación': historialTxt,
+            'Historial de Observaciones': historialTxt,
             'Fecha de Registro': c.fecha
           };
         });
@@ -382,12 +388,20 @@
 
       const total = filteredCases.length;
       const retained = filteredCases.filter(c => c.estado === 'Retenido').length;
-      const dropped = filteredCases.filter(c => c.estado === 'Baja definitiva').length;
+      const droppedCases = filteredCases.filter(c => c.estado === 'Baja definitiva');
+      const dropped = droppedCases.length;
       const inProgress = filteredCases.filter(c => c.estado === 'En seguimiento' || c.estado === 'Solicitud de baja').length;
 
       const retainedPct = total === 0 ? 0 : Math.round((retained / total) * 100);
       const droppedPct = total === 0 ? 0 : Math.round((dropped / total) * 100);
       const inProgressPct = total === 0 ? 0 : Math.round((inProgress / total) * 100);
+
+      // Calcular desglose de Bajas Definitivas
+      const breakdownBaja = droppedCases.reduce((acc, c) => {
+        const key = c.detalleBaja || 'Sin especificar';
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {});
 
       return (
         <div className="space-y-6 relative z-0">
@@ -448,31 +462,59 @@
             </div>
           </div>
 
-          <div className="bg-white/60 backdrop-blur-md p-8 rounded-3xl shadow-lg border border-white/80">
-            <h3 className="font-bold text-slate-800 mb-8 text-lg">Distribución de Resultados Globales</h3>
-            <div className="relative w-full h-12 bg-slate-200/50 rounded-2xl overflow-hidden flex shadow-inner backdrop-blur-sm">
-              {total > 0 ? (
-                <>
-                  <div style={{ width: `${retainedPct}%` }} className="bg-gradient-to-r from-emerald-400 to-emerald-500 h-full flex items-center justify-center text-sm text-white font-bold transition-all duration-700 shadow-[inset_0_2px_4px_rgba(255,255,255,0.3)]">
-                    {retainedPct > 8 && `${retainedPct}%`}
-                  </div>
-                  <div style={{ width: `${inProgressPct}%` }} className="bg-gradient-to-r from-indigo-300 to-indigo-400 h-full flex items-center justify-center text-sm text-white font-bold transition-all duration-700 shadow-[inset_0_2px_4px_rgba(255,255,255,0.3)] border-l border-white/20">
-                    {inProgressPct > 8 && `${inProgressPct}%`}
-                  </div>
-                  <div style={{ width: `${droppedPct}%` }} className="bg-gradient-to-r from-red-400 to-red-500 h-full flex items-center justify-center text-sm text-white font-bold transition-all duration-700 shadow-[inset_0_2px_4px_rgba(255,255,255,0.3)] border-l border-white/20">
-                    {droppedPct > 8 && `${droppedPct}%`}
-                  </div>
-                </>
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-sm text-slate-500 font-medium">No hay datos suficientes</div>
-              )}
+          <div className={`grid grid-cols-1 ${dropped > 0 ? 'lg:grid-cols-2' : ''} gap-6`}>
+            {/* Gráfico de Barras Principal */}
+            <div className="bg-white/60 backdrop-blur-md p-8 rounded-3xl shadow-lg border border-white/80">
+              <h3 className="font-bold text-slate-800 mb-8 text-lg">Distribución de Resultados Globales</h3>
+              <div className="relative w-full h-12 bg-slate-200/50 rounded-2xl overflow-hidden flex shadow-inner backdrop-blur-sm">
+                {total > 0 ? (
+                  <>
+                    <div style={{ width: `${retainedPct}%` }} className="bg-gradient-to-r from-emerald-400 to-emerald-500 h-full flex items-center justify-center text-sm text-white font-bold transition-all duration-700 shadow-[inset_0_2px_4px_rgba(255,255,255,0.3)]">
+                      {retainedPct > 8 && `${retainedPct}%`}
+                    </div>
+                    <div style={{ width: `${inProgressPct}%` }} className="bg-gradient-to-r from-indigo-300 to-indigo-400 h-full flex items-center justify-center text-sm text-white font-bold transition-all duration-700 shadow-[inset_0_2px_4px_rgba(255,255,255,0.3)] border-l border-white/20">
+                      {inProgressPct > 8 && `${inProgressPct}%`}
+                    </div>
+                    <div style={{ width: `${droppedPct}%` }} className="bg-gradient-to-r from-red-400 to-red-500 h-full flex items-center justify-center text-sm text-white font-bold transition-all duration-700 shadow-[inset_0_2px_4px_rgba(255,255,255,0.3)] border-l border-white/20">
+                      {droppedPct > 8 && `${droppedPct}%`}
+                    </div>
+                  </>
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-sm text-slate-500 font-medium">No hay datos suficientes</div>
+                )}
+              </div>
+              
+              <div className="flex gap-6 mt-6 justify-center">
+                <div className="flex items-center gap-2 bg-emerald-50/80 px-4 py-2 rounded-xl border border-emerald-100 shadow-sm"><span className="w-4 h-4 rounded-full bg-gradient-to-r from-emerald-400 to-emerald-500 shadow-sm"></span> <span className="text-sm font-bold text-emerald-800">Retenidos</span></div>
+                <div className="flex items-center gap-2 bg-indigo-50/80 px-4 py-2 rounded-xl border border-indigo-100 shadow-sm"><span className="w-4 h-4 rounded-full bg-gradient-to-r from-indigo-300 to-indigo-400 shadow-sm"></span> <span className="text-sm font-bold text-indigo-800">En Gestión</span></div>
+                <div className="flex items-center gap-2 bg-red-50/80 px-4 py-2 rounded-xl border border-red-100 shadow-sm"><span className="w-4 h-4 rounded-full bg-gradient-to-r from-red-400 to-red-500 shadow-sm"></span> <span className="text-sm font-bold text-red-800">Bajas</span></div>
+              </div>
             </div>
-            
-            <div className="flex gap-6 mt-6 justify-center">
-              <div className="flex items-center gap-2 bg-emerald-50/80 px-4 py-2 rounded-xl border border-emerald-100 shadow-sm"><span className="w-4 h-4 rounded-full bg-gradient-to-r from-emerald-400 to-emerald-500 shadow-sm"></span> <span className="text-sm font-bold text-emerald-800">Retenidos</span></div>
-              <div className="flex items-center gap-2 bg-indigo-50/80 px-4 py-2 rounded-xl border border-indigo-100 shadow-sm"><span className="w-4 h-4 rounded-full bg-gradient-to-r from-indigo-300 to-indigo-400 shadow-sm"></span> <span className="text-sm font-bold text-indigo-800">En Gestión</span></div>
-              <div className="flex items-center gap-2 bg-red-50/80 px-4 py-2 rounded-xl border border-red-100 shadow-sm"><span className="w-4 h-4 rounded-full bg-gradient-to-r from-red-400 to-red-500 shadow-sm"></span> <span className="text-sm font-bold text-red-800">Bajas</span></div>
-            </div>
+
+            {/* Nuevo: Desglose de Bajas Definitivas */}
+            {dropped > 0 && (
+              <div className="bg-white/60 backdrop-blur-md p-8 rounded-3xl shadow-lg border border-white/80 animate-fade-in">
+                <h3 className="font-bold text-slate-800 mb-6 text-lg flex items-center gap-2">
+                  <XCircle className="text-red-500" size={20}/> Detalle de Bajas Definitivas
+                </h3>
+                <div className="space-y-4">
+                  {Object.entries(breakdownBaja).map(([motivo, count]) => {
+                    const percent = Math.round((count / dropped) * 100);
+                    return (
+                      <div key={motivo}>
+                        <div className="flex justify-between text-sm mb-1.5">
+                          <span className="font-semibold text-slate-700 truncate pr-4">{motivo}</span>
+                          <span className="font-bold text-red-600">{count} <span className="text-slate-400 font-normal">({percent}%)</span></span>
+                        </div>
+                        <div className="w-full bg-slate-200/50 h-2.5 rounded-full overflow-hidden shadow-inner">
+                          <div className="bg-red-400 h-full rounded-full transition-all duration-700" style={{ width: `${percent}%` }}></div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       );
@@ -492,7 +534,6 @@
         return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
       };
 
-      // Función para pintar badges modernos según el motivo
       const getMotivoStyle = (motivo) => {
         switch(motivo) {
           case 'Económico': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
@@ -569,6 +610,11 @@
                            <span className={`inline-flex px-3 py-1.5 rounded-lg text-xs font-bold border shadow-sm ${getMotivoStyle(c.motivo)}`}>
                              {c.motivo}
                            </span>
+                           {c.estado === 'Baja definitiva' && c.detalleBaja && (
+                             <div className="mt-1.5 text-[10px] text-red-600 font-medium leading-tight">
+                               └ {c.detalleBaja}
+                             </div>
+                           )}
                         </td>
                         <td className="p-5">
                           <StatusBadge status={c.estado} />
@@ -605,7 +651,7 @@
     // --- CASE FORM COMPONENT ---
     function CaseForm({ caseToEdit = null, onSave, onCancel }) {
       const [formData, setFormData] = useState(caseToEdit || {
-        matricula: '', nombre: '', telefono: '', carrera: CAREERS[0].name, modalidad: CAREERS[0].modalities[0], tipoAlumno: [], estado: 'Solicitud de baja', motivo: REASONS[0], empresaAmiga: false, nombreEmpresa: '', observacion: ''
+        matricula: '', nombre: '', telefono: '', carrera: CAREERS[0].name, modalidad: CAREERS[0].modalities[0], tipoAlumno: [], estado: 'Solicitud de baja', motivo: REASONS[0], empresaAmiga: false, nombreEmpresa: '', observacion: '', detalleBaja: BAJA_SUBCATEGORIES[0], detalleBajaOtro: ''
       });
 
       useEffect(() => {
@@ -617,7 +663,13 @@
 
       const handleSubmit = (e) => {
         e.preventDefault();
-        onSave(formData);
+        const dataToSave = {...formData};
+        if (dataToSave.estado === 'Baja definitiva') {
+          dataToSave.detalleBaja = dataToSave.detalleBaja === 'Otro' ? dataToSave.detalleBajaOtro : dataToSave.detalleBaja;
+        } else {
+          dataToSave.detalleBaja = null;
+        }
+        onSave(dataToSave);
       };
 
       const handleCareerChange = (e) => {
@@ -717,7 +769,20 @@
               </div>
             </div>
 
-            {/* Nuevo bloque: Etiquetas del Alumno (Tipo y Empresa) */}
+            {formData.estado === 'Baja definitiva' && (
+              <div className="bg-red-50 p-4 rounded-xl border border-red-200 animate-fade-in">
+                <label className="block text-sm font-bold text-red-800 mb-2">Especificar Detalle de la Baja Definitiva</label>
+                <select className="w-full border border-red-200 bg-white rounded-lg p-2.5 focus:ring-2 outline-none mb-3 text-sm text-slate-700"
+                  value={formData.detalleBaja || BAJA_SUBCATEGORIES[0]} onChange={e => setFormData({...formData, detalleBaja: e.target.value})}>
+                  {BAJA_SUBCATEGORIES.map(b => <option key={b} value={b}>{b}</option>)}
+                </select>
+                {formData.detalleBaja === 'Otro' && (
+                  <input required type="text" placeholder="Escribe el motivo aquí..." className="w-full border border-red-200 bg-white rounded-lg p-2.5 text-sm focus:ring-2 outline-none"
+                    value={formData.detalleBajaOtro} onChange={e => setFormData({...formData, detalleBajaOtro: e.target.value})} />
+                )}
+              </div>
+            )}
+
             <div className="bg-slate-50 p-5 rounded-xl border border-slate-200 space-y-4">
               <h4 className="font-bold text-slate-700 text-sm border-b border-slate-200 pb-2">Perfil del Alumno (Múltiple Selección)</h4>
               
@@ -786,8 +851,14 @@
     // --- CASE DETAIL COMPONENT ---
     function CaseDetail({ caseData, onBack, onUpdate, onEdit, onDelete }) {
       const [showDeleteModal, setShowDeleteModal] = useState(false);
+      const [showBajaModal, setShowBajaModal] = useState(false);
+      const [bajaReason, setBajaReason] = useState(BAJA_SUBCATEGORIES[0]);
+      const [bajaOtro, setBajaOtro] = useState('');
+
       const [newInteraction, setNewInteraction] = useState('');
-      const chatContainerRef = useRef(null);
+      const [interactionType, setInteractionType] = useState('asesor'); // 'asesor' | 'alumno'
+
+      const historyEndRef = useRef(null);
 
       if (!caseData) return null;
 
@@ -804,23 +875,31 @@
       const totalProofDiscount = currentDiscount + extraProofOffer; 
 
       useEffect(() => {
-        if (chatContainerRef.current) {
-          chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-        }
+        historyEndRef.current?.scrollIntoView({ behavior: "smooth" });
       }, [caseData.interacciones]);
 
-      const updateStatus = (newStatus) => {
-        onUpdate({ ...caseData, estado: newStatus });
+      const handleStatusClick = (s) => {
+        if (s === 'Baja definitiva') {
+          setShowBajaModal(true);
+        } else {
+          onUpdate({ ...caseData, estado: s, detalleBaja: null });
+        }
       };
 
-      const handleAddInteraction = (rol) => {
+      const confirmBajaDefinitiva = () => {
+        const finalReason = bajaReason === 'Otro' ? bajaOtro : bajaReason;
+        onUpdate({ ...caseData, estado: 'Baja definitiva', detalleBaja: finalReason });
+        setShowBajaModal(false);
+      };
+
+      const handleAddInteraction = () => {
         if (!newInteraction.trim()) return;
         
         const interaccion = {
           id: Date.now().toString(),
           fecha: new Date().toISOString(),
           texto: newInteraction.trim(),
-          rol: rol
+          rol: interactionType
         };
 
         const currentInteracciones = caseData.interacciones || [];
@@ -842,7 +921,7 @@
         setNewInteraction('');
       };
 
-      // Si no tiene historial guardado aún, mostramos la observación original para no perderla visualmente
+      // Helper para renderizar historial de forma segura
       const interacciones = (caseData.interacciones && caseData.interacciones.length > 0) 
         ? caseData.interacciones 
         : (caseData.observacion ? [{id: 'old', fecha: caseData.fecha ? caseData.fecha + 'T12:00:00.000Z' : new Date().toISOString(), texto: caseData.observacion, rol: 'sistema'}] : []);
@@ -850,7 +929,7 @@
       return (
         <div className="space-y-6 relative animate-fade-in">
           
-          {/* --- MODAL CONFIRMACIÓN ELIMINAR --- */}
+          {/* MODAL CONFIRMACIÓN ELIMINAR */}
           {showDeleteModal && (
             <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
               <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl animate-fade-in border border-slate-100">
@@ -860,16 +939,10 @@
                 <h3 className="text-xl font-bold text-center text-slate-800 mb-2">¿Eliminar este caso?</h3>
                 <p className="text-center text-slate-500 font-medium mb-8">Esta acción es permanente y se borrará de Firebase.</p>
                 <div className="flex gap-3">
-                  <button 
-                    onClick={() => setShowDeleteModal(false)}
-                    className="flex-1 py-3 px-4 font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
-                  >
+                  <button onClick={() => setShowDeleteModal(false)} className="flex-1 py-3 px-4 font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors">
                     Cancelar
                   </button>
-                  <button 
-                    onClick={() => onDelete(caseData.id)}
-                    className="flex-1 py-3 px-4 font-bold text-white bg-red-500 hover:bg-red-600 rounded-xl transition-colors shadow-sm"
-                  >
+                  <button onClick={() => onDelete(caseData.id)} className="flex-1 py-3 px-4 font-bold text-white bg-red-500 hover:bg-red-600 rounded-xl transition-colors shadow-sm">
                     Sí, eliminar
                   </button>
                 </div>
@@ -877,7 +950,56 @@
             </div>
           )}
 
-          {/* --- HEADER SECUNDARIO: VOLVER Y ACCIONES --- */}
+          {/* MODAL DETALLE BAJA DEFINITIVA */}
+          {showBajaModal && (
+            <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl animate-fade-in border border-slate-100">
+                <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mb-6 mx-auto">
+                  <XCircle size={32} />
+                </div>
+                <h3 className="text-xl font-bold text-center text-slate-800 mb-2">Confirmar Baja Definitiva</h3>
+                <p className="text-center text-slate-500 font-medium mb-6">Por favor, especifica el motivo final por el que el alumno se da de baja.</p>
+                
+                <div className="mb-6 text-left">
+                  <select 
+                    className="w-full border border-slate-300 rounded-xl p-3 focus:ring-2 focus:ring-red-400 outline-none text-slate-700 bg-slate-50"
+                    value={bajaReason} 
+                    onChange={e => setBajaReason(e.target.value)}
+                  >
+                    {BAJA_SUBCATEGORIES.map(b => <option key={b} value={b}>{b}</option>)}
+                  </select>
+                  
+                  {bajaReason === 'Otro' && (
+                    <div className="mt-3 animate-fade-in">
+                      <input 
+                        type="text" 
+                        placeholder="Escribe el motivo detallado..." 
+                        className="w-full border border-slate-300 rounded-xl p-3 focus:ring-2 focus:ring-red-400 outline-none text-slate-700"
+                        value={bajaOtro} 
+                        onChange={e => setBajaOtro(e.target.value)}
+                        autoFocus
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex gap-3">
+                  <button onClick={() => setShowBajaModal(false)} className="flex-1 py-3 px-4 font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors">
+                    Cancelar
+                  </button>
+                  <button 
+                    onClick={confirmBajaDefinitiva} 
+                    disabled={bajaReason === 'Otro' && !bajaOtro.trim()}
+                    className="flex-1 py-3 px-4 font-bold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors shadow-sm disabled:opacity-50"
+                  >
+                    Confirmar Baja
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* HEADER SECUNDARIO */}
           <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
             <button onClick={onBack} className="flex items-center gap-2 text-slate-500 hover:text-slate-800 transition-colors font-bold px-2 py-1">
               <ArrowLeft size={18} /> Volver a la lista
@@ -909,7 +1031,12 @@
                     <h3 className="text-2xl font-bold text-slate-800">{caseData.nombre}</h3>
                     <p className="text-slate-500 font-medium">{caseData.caseNumber} • {caseData.matricula}</p>
                   </div>
-                  <StatusBadge status={caseData.estado} />
+                  <div className="flex flex-col items-end">
+                    <StatusBadge status={caseData.estado} />
+                    {caseData.estado === 'Baja definitiva' && caseData.detalleBaja && (
+                      <span className="text-[10px] text-red-500 font-bold mt-1 text-right max-w-[120px] leading-tight">{caseData.detalleBaja}</span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="space-y-4 mt-6">
@@ -978,7 +1105,7 @@
                     {STATUSES.map(s => (
                       <button 
                         key={s}
-                        onClick={() => updateStatus(s)}
+                        onClick={() => handleStatusClick(s)}
                         className={`text-left px-4 py-2.5 rounded-xl border transition-all ${caseData.estado === s ? 'bg-indigo-50 border-indigo-300 text-indigo-700 font-bold ring-1 ring-indigo-500' : 'border-slate-200 text-slate-600 font-medium hover:bg-slate-50'}`}
                       >
                         Marcar como: {s}
@@ -1059,18 +1186,15 @@
                 </div>
               </div>
 
-              {/* --- HISTORIAL DE NEGOCIACIÓN (NUEVO) --- */}
+              {/* --- HISTORIAL (BITÁCORA) --- */}
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col flex-1 min-h-[400px]">
                 <div className="p-4 border-b border-slate-100 flex items-center gap-2 bg-slate-50/50 rounded-t-2xl">
-                  <MessageSquare size={20} className="text-slate-400" />
-                  <h3 className="font-bold text-slate-700">Historial de Seguimiento e Interacciones</h3>
+                  <Archive size={20} className="text-slate-400" />
+                  <h3 className="font-bold text-slate-700">Bitácora de Observaciones y Negociación</h3>
                 </div>
 
-                {/* Contenedor del Chat */}
-                <div 
-                  ref={chatContainerRef}
-                  className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-slate-50/30"
-                >
+                {/* Lista Historial */}
+                <div className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar bg-slate-50/30">
                   {interacciones.map((msg, index) => {
                     let d;
                     try {
@@ -1083,69 +1207,74 @@
                     const isAsesor = msg.rol === 'asesor';
                     const isAlumno = msg.rol === 'alumno';
                     const isSistema = msg.rol === 'sistema'; 
+
+                    let boxStyle = "border-slate-300 bg-white";
+                    let badgeStyle = "bg-slate-100 text-slate-600";
+                    let titleStr = "Observación General";
+
+                    if (isAsesor) {
+                      boxStyle = "border-indigo-400 bg-indigo-50/30";
+                      badgeStyle = "bg-indigo-100 text-indigo-700";
+                      titleStr = "Mi Oferta / Acción";
+                    } else if (isAlumno) {
+                      boxStyle = "border-emerald-400 bg-emerald-50/30";
+                      badgeStyle = "bg-emerald-100 text-emerald-700";
+                      titleStr = "Respuesta del Alumno";
+                    } else if (isSistema) {
+                      boxStyle = "border-amber-400 bg-amber-50/30";
+                      badgeStyle = "bg-amber-100 text-amber-700";
+                      titleStr = "Situación Inicial / Motivo";
+                    }
                     
                     return (
-                      <div key={msg.id || index} className={`flex w-full ${isAsesor ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-[80%] flex gap-3 ${isAsesor ? 'flex-row-reverse' : 'flex-row'}`}>
-                          
-                          {/* Avatar */}
-                          <div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center shadow-sm ${
-                            isAsesor ? 'bg-indigo-100 text-indigo-600' : 
-                            isSistema ? 'bg-amber-100 text-amber-600' : 
-                            'bg-slate-200 text-slate-600'
-                          }`}>
-                            {isAsesor ? <User size={14} /> : isSistema ? <AlertCircle size={14} /> : <User size={14} />}
-                          </div>
-
-                          {/* Mensaje */}
-                          <div className={`flex flex-col ${isAsesor ? 'items-end' : 'items-start'}`}>
-                            <div className="flex items-center gap-2 mb-1 px-1">
-                              <span className="text-[11px] font-bold text-slate-500 uppercase">
-                                {isAsesor ? 'Tú (Asesor)' : isSistema ? 'Motivo Inicial / Observación' : 'Alumno'}
-                              </span>
-                              <span className="text-[10px] text-slate-400">
-                                {d.toLocaleDateString()} {d.getHours()}:{String(d.getMinutes()).padStart(2, '0')}
-                              </span>
-                            </div>
-                            <div className={`p-3.5 rounded-2xl text-sm shadow-sm whitespace-pre-wrap leading-relaxed ${
-                              isAsesor ? 'bg-indigo-600 text-white rounded-tr-none' : 
-                              isSistema ? 'bg-amber-50 border border-amber-200 text-amber-900 rounded-tl-none italic' : 
-                              'bg-white border border-slate-200 text-slate-700 rounded-tl-none'
-                            }`}>
-                              {msg.texto}
-                            </div>
-                          </div>
+                      <div key={msg.id || index} className={`relative p-4 rounded-xl border-l-4 shadow-sm border-y border-r ${boxStyle} animate-fade-in`}>
+                        <div className="flex justify-between items-start mb-2">
+                          <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${badgeStyle}`}>
+                            {titleStr}
+                          </span>
+                          <span className="text-[10px] font-bold text-slate-400">
+                            {d.toLocaleDateString()} - {d.getHours()}:{String(d.getMinutes()).padStart(2, '0')}
+                          </span>
                         </div>
+                        <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
+                          {msg.texto}
+                        </p>
                       </div>
                     );
                   })}
+                  <div ref={historyEndRef} />
                 </div>
 
-                {/* Input Area */}
+                {/* Input Historial */}
                 <div className="p-4 bg-white border-t border-slate-100 rounded-b-2xl">
                   <div className="flex flex-col gap-3">
+                    <div className="flex items-center gap-2">
+                      <select 
+                        className="border border-slate-300 text-sm rounded-lg p-2 focus:ring-2 focus:ring-indigo-400 outline-none font-bold text-slate-600 bg-slate-50"
+                        value={interactionType}
+                        onChange={(e) => setInteractionType(e.target.value)}
+                      >
+                        <option value="asesor">Mi Oferta / Acción</option>
+                        <option value="alumno">Respuesta del Alumno</option>
+                      </select>
+                      <span className="text-xs text-slate-400 italic">Selecciona el tipo de registro a añadir.</span>
+                    </div>
+                    
                     <textarea 
                       rows={2}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none custom-scrollbar transition-all"
-                      placeholder="Escribe el ofrecimiento realizado o la respuesta del alumno..."
+                      className="w-full bg-white border border-slate-300 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none custom-scrollbar transition-all"
+                      placeholder="Redacta la observación, la oferta otorgada o la contestación obtenida..."
                       value={newInteraction}
                       onChange={(e) => setNewInteraction(e.target.value)}
                     ></textarea>
                     
-                    <div className="flex flex-wrap justify-end gap-2">
+                    <div className="flex justify-end">
                       <button 
-                        onClick={() => handleAddInteraction('alumno')}
+                        onClick={handleAddInteraction}
                         disabled={!newInteraction.trim()}
-                        className="px-4 py-2 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg text-xs font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 border border-slate-200"
+                        className="px-5 py-2.5 bg-indigo-600 text-white hover:bg-indigo-700 rounded-xl text-sm font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm"
                       >
-                        Añadir Respuesta del Alumno
-                      </button>
-                      <button 
-                        onClick={() => handleAddInteraction('asesor')}
-                        disabled={!newInteraction.trim()}
-                        className="px-4 py-2 bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg text-xs font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-sm"
-                      >
-                        Registrar mi Oferta / Acción <Send size={14} />
+                        <PlusCircle size={16} /> Agregar al Historial
                       </button>
                     </div>
                   </div>
