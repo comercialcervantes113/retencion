@@ -734,30 +734,41 @@
         const recognition = new SpeechRecognition();
         recognitionRef.current = recognition;
         recognition.lang = 'es-AR';
+        recognition.continuous = true; // Mantiene grabando hasta que se detiene manualmente
         recognition.interimResults = false;
+        
+        let localTranscript = "";
         
         recognition.onstart = () => setIsRecording(true);
         
-        recognition.onresult = async (event) => {
-          setIsRecording(false);
-          const transcript = event.results[0][0].transcript;
-          
-          setIsProcessing(true);
-          const correctedText = await correctTextWithAI(transcript);
-          setIsProcessing(false);
-          
-          const newText = formData.observacion ? formData.observacion + " " + correctedText : correctedText;
-          setFormData({...formData, observacion: newText});
+        recognition.onresult = (event) => {
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
+              localTranscript += event.results[i][0].transcript + " ";
+            }
+          }
         };
         
         recognition.onerror = (event) => {
           console.error("Speech recognition error", event.error);
-          setIsRecording(false);
-          setIsProcessing(false);
+          if (event.error !== 'no-speech') {
+            setIsRecording(false);
+            setIsProcessing(false);
+          }
         };
         
-        recognition.onend = () => {
+        recognition.onend = async () => {
           setIsRecording(false);
+          if (localTranscript.trim()) {
+            setIsProcessing(true);
+            const correctedText = await correctTextWithAI(localTranscript);
+            setIsProcessing(false);
+            
+            setFormData(prev => {
+              const newText = prev.observacion ? prev.observacion + " " + correctedText : correctedText;
+              return {...prev, observacion: newText};
+            });
+          }
         };
         
         recognition.start();
@@ -905,7 +916,7 @@
                 {/* Controles de dictado por voz */}
                 <div className="absolute bottom-3 right-3 flex items-center gap-2">
                   {isProcessing && <span className="text-xs text-indigo-600 font-bold animate-pulse">Corrigiendo redacción (IA)...</span>}
-                  {isRecording && <span className="text-xs text-red-600 font-bold animate-pulse">Escuchando...</span>}
+                  {isRecording && <span className="text-xs text-red-600 font-bold animate-pulse">Grabando (Apreta el micrófono para detener)...</span>}
                   <button
                     type="button"
                     onClick={toggleDictation}
@@ -954,6 +965,10 @@
       const [isRecording, setIsRecording] = useState(false);
       const [isProcessing, setIsProcessing] = useState(false);
       const recognitionRef = useRef(null);
+
+      // Estado para manejar la edición de mensajes del historial
+      const [editingMsgId, setEditingMsgId] = useState(null);
+      const [editingMsgText, setEditingMsgText] = useState("");
 
       const historyEndRef = useRef(null);
 
@@ -1033,36 +1048,90 @@
         const recognition = new SpeechRecognition();
         recognitionRef.current = recognition;
         recognition.lang = 'es-AR';
+        recognition.continuous = true; // Mantiene grabando hasta que se detiene manualmente
         recognition.interimResults = false;
+        
+        let localTranscript = "";
         
         recognition.onstart = () => setIsRecording(true);
         
-        recognition.onresult = async (event) => {
-          setIsRecording(false);
-          const transcript = event.results[0][0].transcript;
-          
-          setIsProcessing(true);
-          const correctedText = await correctTextWithAI(transcript);
-          setIsProcessing(false);
-          
-          const newText = newInteraction ? newInteraction + " " + correctedText : correctedText;
-          setNewInteraction(newText);
+        recognition.onresult = (event) => {
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
+              localTranscript += event.results[i][0].transcript + " ";
+            }
+          }
         };
         
         recognition.onerror = (event) => {
           console.error("Speech recognition error", event.error);
-          setIsRecording(false);
-          setIsProcessing(false);
+          if (event.error !== 'no-speech') {
+            setIsRecording(false);
+            setIsProcessing(false);
+          }
         };
         
-        recognition.onend = () => {
+        recognition.onend = async () => {
           setIsRecording(false);
+          if (localTranscript.trim()) {
+            setIsProcessing(true);
+            const correctedText = await correctTextWithAI(localTranscript);
+            setIsProcessing(false);
+            
+            setNewInteraction(prev => prev ? prev + " " + correctedText : correctedText);
+          }
         };
         
         recognition.start();
       };
 
-      // Helper para renderizar historial de forma segura
+      const handleEditMsgStart = (msg) => {
+        setEditingMsgId(msg.id || 'old');
+        setEditingMsgText(msg.texto);
+      };
+
+      const handleEditMsgCancel = () => {
+        setEditingMsgId(null);
+        setEditingMsgText("");
+      };
+
+      const handleEditMsgSave = () => {
+        let finalInteractions = [...(caseData.interacciones || [])];
+        
+        if (editingMsgId === 'old' || editingMsgId === 'initial') {
+          if (finalInteractions.length === 0) {
+            finalInteractions = [{
+              id: 'initial',
+              fecha: caseData.fecha ? caseData.fecha + 'T00:00:00.000Z' : new Date().toISOString(),
+              texto: editingMsgText,
+              rol: 'sistema'
+            }];
+          } else {
+            const idx = finalInteractions.findIndex(i => i.id === 'initial' || i.id === 'old');
+            if (idx !== -1) {
+              finalInteractions[idx].texto = editingMsgText;
+            }
+          }
+          
+          onUpdate({
+            ...caseData,
+            observacion: editingMsgText, // Actualizamos la observación principal por seguridad
+            interacciones: finalInteractions
+          });
+        } else {
+          finalInteractions = finalInteractions.map(i => 
+            i.id === editingMsgId ? { ...i, texto: editingMsgText } : i
+          );
+          onUpdate({
+            ...caseData,
+            interacciones: finalInteractions
+          });
+        }
+        
+        setEditingMsgId(null);
+        setEditingMsgText("");
+      };
+
       const interacciones = (caseData.interacciones && caseData.interacciones.length > 0) 
         ? caseData.interacciones 
         : (caseData.observacion ? [{id: 'old', fecha: caseData.fecha ? caseData.fecha + 'T12:00:00.000Z' : new Date().toISOString(), texto: caseData.observacion, rol: 'sistema'}] : []);
@@ -1366,6 +1435,8 @@
                       badgeStyle = "bg-amber-100 text-amber-700";
                       titleStr = "Situación Inicial / Motivo";
                     }
+
+                    const isEditingThis = editingMsgId === (msg.id || 'old');
                     
                     return (
                       <div key={msg.id || index} className={`relative p-4 rounded-xl border-l-4 shadow-sm border-y border-r ${boxStyle} animate-fade-in`}>
@@ -1373,13 +1444,37 @@
                           <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${badgeStyle}`}>
                             {titleStr}
                           </span>
-                          <span className="text-[10px] font-bold text-slate-400">
-                            {d.toLocaleDateString()} - {d.getHours()}:{String(d.getMinutes()).padStart(2, '0')}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold text-slate-400">
+                              {d.toLocaleDateString()} - {d.getHours()}:{String(d.getMinutes()).padStart(2, '0')}
+                            </span>
+                            {!isEditingThis && (
+                              <button onClick={() => handleEditMsgStart(msg)} className="text-slate-400 hover:text-indigo-600 transition-colors" title="Editar observación">
+                                <Edit2 size={12} />
+                              </button>
+                            )}
+                          </div>
                         </div>
-                        <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
-                          {msg.texto}
-                        </p>
+                        
+                        {isEditingThis ? (
+                          <div className="mt-2 animate-fade-in">
+                            <textarea 
+                              className="w-full bg-white border border-indigo-300 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 custom-scrollbar resize-none"
+                              rows={3}
+                              value={editingMsgText}
+                              onChange={e => setEditingMsgText(e.target.value)}
+                              autoFocus
+                            />
+                            <div className="flex justify-end gap-2 mt-2">
+                              <button onClick={handleEditMsgCancel} className="px-3 py-1.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors">Cancelar</button>
+                              <button onClick={handleEditMsgSave} disabled={!editingMsgText.trim()} className="px-3 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors shadow-sm disabled:opacity-50">Guardar</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
+                            {msg.texto}
+                          </p>
+                        )}
                       </div>
                     );
                   })}
@@ -1412,7 +1507,7 @@
                       
                       <div className="absolute bottom-3 right-3 flex items-center gap-2">
                         {isProcessing && <span className="text-[10px] text-indigo-600 font-bold animate-pulse">Corrigiendo redacción (IA)...</span>}
-                        {isRecording && <span className="text-[10px] text-red-600 font-bold animate-pulse">Escuchando...</span>}
+                        {isRecording && <span className="text-[10px] text-red-600 font-bold animate-pulse">Grabando (Apreta el micrófono para detener)...</span>}
                         <button
                           type="button"
                           onClick={toggleDictation}
