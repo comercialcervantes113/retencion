@@ -52,7 +52,7 @@
   <script type="text/babel" data-type="module">
     import React, { useState, useEffect, useMemo, useRef } from 'react';
     import { createRoot } from 'react-dom/client';
-    import { LayoutDashboard, Users, UserPlus, MessageCircle, Phone, Search, Filter, Save, ChevronRight, ArrowLeft, CheckCircle2, AlertCircle, XCircle, Clock, Edit2, Trash2, Archive, Database, Download, Send, User, MessageSquare, PlusCircle, Mic, Loader2, Sparkles } from 'lucide-react';
+    import { LayoutDashboard, Users, UserPlus, MessageCircle, Phone, Search, Filter, Save, ChevronRight, ArrowLeft, CheckCircle2, AlertCircle, XCircle, Clock, Edit2, Trash2, Archive, Database, Download, Send, User, MessageSquare, PlusCircle, Mic, Loader2, Sparkles, AlertTriangle } from 'lucide-react';
     
     // --- INTEGRACIÓN DE FIREBASE ---
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
@@ -85,6 +85,8 @@
       { name: 'Gestión Inmobiliaria', hex: '#BB242A', modalities: ['Presencial', 'Semipresencial', 'Distancia'] }
     ];
 
+    const ALL_MODALITIES = ['Presencial', 'Semipresencial', 'Distancia'];
+
     const MODALITY_RULES = {
       'Presencial': '3 o 4 días de cursado. Aula híbrida (flexible). Examen final presencial en la institución.',
       'Semipresencial': '1 vez por semana. Aula híbrida (flexible). Examen final sincrónico con profesor.',
@@ -95,6 +97,7 @@
     const REASONS = ['Económico', 'Falta de tiempo / Horarios', 'Laboral', 'Académico', 'Personal / Salud', 'Otro'];
     const STUDENT_TYPES = ['Ingresante', 'No inicio', 'No continua'];
     const BAJA_SUBCATEGORIES = ['No quiere seguir en Cervantes', 'Solicita postergar para el próximo inicio', 'Otro'];
+    const NIVELES_CASO = ['Caso leve', 'Caso medio', 'Caso crítico'];
 
     // --- FUNCIÓN GLOBAL DE IA PARA CORREGIR TEXTOS ---
     const correctTextWithAI = async (text) => {
@@ -249,6 +252,7 @@
             'Carrera': c.carrera,
             'Modalidad': c.modalidad || 'No especificada',
             'Tipo Alumno': c.tipoAlumno && c.tipoAlumno.length > 0 ? c.tipoAlumno.join(', ') : 'No especificado',
+            'Nivel de Caso': c.nivelCaso || 'No especificado',
             'Motivo Principal': c.motivo,
             'Estado': estadoExport,
             'Empresa Amiga': c.empresaAmiga ? 'Sí' : 'No',
@@ -401,15 +405,19 @@
       const [filterCareer, setFilterCareer] = useState('');
       const [filterReason, setFilterReason] = useState('');
       const [filterStatus, setFilterStatus] = useState('');
+      const [filterModalidad, setFilterModalidad] = useState('');
+      const [filterNivel, setFilterNivel] = useState('');
 
       const filteredCases = useMemo(() => {
         return cases.filter(c => {
           if (filterCareer && c.carrera !== filterCareer) return false;
           if (filterReason && c.motivo !== filterReason) return false;
           if (filterStatus && c.estado !== filterStatus) return false;
+          if (filterModalidad && c.modalidad !== filterModalidad) return false;
+          if (filterNivel && c.nivelCaso !== filterNivel) return false;
           return true;
         });
-      }, [cases, filterCareer, filterReason, filterStatus]);
+      }, [cases, filterCareer, filterReason, filterStatus, filterModalidad, filterNivel]);
 
       const total = filteredCases.length;
       const retained = filteredCases.filter(c => c.estado === 'Retenido').length;
@@ -435,21 +443,33 @@
             <div className="absolute -bottom-10 left-1/3 w-72 h-72 bg-pink-200 rounded-full mix-blend-multiply filter blur-3xl opacity-40 animate-pulse" style={{ animationDelay: '4s' }}></div>
           </div>
 
-          <div className="bg-white/50 backdrop-blur-md p-4 rounded-2xl shadow-sm border border-white/60 flex flex-wrap gap-4 items-center">
-            <Filter className="text-indigo-600" size={20} />
-            <span className="font-semibold text-slate-700">Filtros (Globales):</span>
-            <select className="bg-white/60 backdrop-blur-sm border border-white/50 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium" value={filterCareer} onChange={e => setFilterCareer(e.target.value)}>
-              <option value="">Todas las Carreras</option>
-              {CAREERS.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
-            </select>
-            <select className="bg-white/60 backdrop-blur-sm border border-white/50 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium" value={filterReason} onChange={e => setFilterReason(e.target.value)}>
-              <option value="">Todos los Motivos</option>
-              {REASONS.map(r => <option key={r} value={r}>{r}</option>)}
-            </select>
-            <select className="bg-white/60 backdrop-blur-sm border border-white/50 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
-              <option value="">Todos los Estados</option>
-              {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
+          <div className="bg-white/50 backdrop-blur-md p-4 rounded-2xl shadow-sm border border-white/60">
+            <div className="flex items-center gap-2 mb-3">
+              <Filter className="text-indigo-600" size={20} />
+              <span className="font-semibold text-slate-700">Filtros (Globales):</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+              <select className="bg-white/60 backdrop-blur-sm border border-white/50 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium" value={filterCareer} onChange={e => setFilterCareer(e.target.value)}>
+                <option value="">Todas las Carreras</option>
+                {CAREERS.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+              </select>
+              <select className="bg-white/60 backdrop-blur-sm border border-white/50 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium" value={filterModalidad} onChange={e => setFilterModalidad(e.target.value)}>
+                <option value="">Todas las Modalidades</option>
+                {ALL_MODALITIES.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+              <select className="bg-white/60 backdrop-blur-sm border border-white/50 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium" value={filterNivel} onChange={e => setFilterNivel(e.target.value)}>
+                <option value="">Todos los Niveles</option>
+                {NIVELES_CASO.map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+              <select className="bg-white/60 backdrop-blur-sm border border-white/50 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium" value={filterReason} onChange={e => setFilterReason(e.target.value)}>
+                <option value="">Todos los Motivos</option>
+                {REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+              </select>
+              <select className="bg-white/60 backdrop-blur-sm border border-white/50 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+                <option value="">Todos los Estados</option>
+                {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -569,6 +589,15 @@
         }
       };
 
+      const getNivelStyle = (nivel) => {
+        switch(nivel) {
+          case 'Caso leve': return 'text-emerald-600 bg-emerald-100 border-emerald-200';
+          case 'Caso medio': return 'text-amber-600 bg-amber-100 border-amber-200';
+          case 'Caso crítico': return 'text-red-600 bg-red-100 border-red-200';
+          default: return 'text-slate-600 bg-slate-100 border-slate-200';
+        }
+      };
+
       return (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-fade-in">
           <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-white">
@@ -591,7 +620,7 @@
                   <th className="p-5 font-semibold">Matrícula</th>
                   <th className="p-5 font-semibold">Alumno</th>
                   <th className="p-5 font-semibold">Carrera y Modalidad</th>
-                  <th className="p-5 font-semibold">Motivo</th>
+                  <th className="p-5 font-semibold">Motivo y Nivel</th>
                   <th className="p-5 font-semibold">Estado</th>
                   <th className="p-5 font-semibold text-right">Acciones</th>
                 </tr>
@@ -631,14 +660,19 @@
                           </div>
                         </td>
                         <td className="p-5">
-                           <span className={`inline-flex px-3 py-1.5 rounded-lg text-xs font-bold border shadow-sm ${getMotivoStyle(c.motivo)}`}>
-                             {c.motivo}
-                           </span>
-                           {c.estado === 'Baja definitiva' && c.detalleBaja && (
-                             <div className="mt-1.5 text-[10px] text-red-600 font-medium leading-tight">
-                               └ {c.detalleBaja}
-                             </div>
-                           )}
+                          <div className="flex flex-col items-start gap-1.5">
+                            <span className={`inline-flex px-3 py-1.5 rounded-lg text-xs font-bold border shadow-sm ${getMotivoStyle(c.motivo)}`}>
+                              {c.motivo}
+                            </span>
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold border ${getNivelStyle(c.nivelCaso)}`}>
+                              <AlertTriangle size={10} className="mr-1" /> {c.nivelCaso || 'Sin nivel'}
+                            </span>
+                          </div>
+                          {c.estado === 'Baja definitiva' && c.detalleBaja && (
+                            <div className="mt-1.5 text-[10px] text-red-600 font-medium leading-tight">
+                              └ {c.detalleBaja}
+                            </div>
+                          )}
                         </td>
                         <td className="p-5">
                           <StatusBadge status={c.estado} />
@@ -675,7 +709,7 @@
     // --- CASE FORM COMPONENT ---
     function CaseForm({ caseToEdit = null, onSave, onCancel }) {
       const [formData, setFormData] = useState(caseToEdit || {
-        matricula: '', nombre: '', telefono: '', carrera: CAREERS[0].name, modalidad: CAREERS[0].modalities[0], tipoAlumno: [], estado: 'Solicitud de baja', motivo: REASONS[0], empresaAmiga: false, nombreEmpresa: '', observacion: '', detalleBaja: BAJA_SUBCATEGORIES[0], detalleBajaOtro: ''
+        matricula: '', nombre: '', telefono: '', carrera: CAREERS[0].name, modalidad: CAREERS[0].modalities[0], tipoAlumno: [], nivelCaso: NIVELES_CASO[0], estado: 'Solicitud de baja', motivo: REASONS[0], empresaAmiga: false, nombreEmpresa: '', observacion: '', detalleBaja: BAJA_SUBCATEGORIES[0], detalleBajaOtro: ''
       });
 
       const [isRecording, setIsRecording] = useState(false);
@@ -685,7 +719,8 @@
       useEffect(() => {
         if (caseToEdit) setFormData({
           ...caseToEdit,
-          tipoAlumno: caseToEdit.tipoAlumno || []
+          tipoAlumno: caseToEdit.tipoAlumno || [],
+          nivelCaso: caseToEdit.nivelCaso || NIVELES_CASO[0]
         });
       }, [caseToEdit]);
 
@@ -841,7 +876,7 @@
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-1">Motivo principal</label>
                 <select className="w-full border border-slate-300 rounded-xl p-2.5 focus:ring-2 outline-none transition-shadow"
@@ -856,6 +891,14 @@
                   style={{ '--tw-ring-color': careerInfo.hex }}
                   value={formData.estado} onChange={e => setFormData({...formData, estado: e.target.value})}>
                   {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">Nivel de Gravedad</label>
+                <select className="w-full border border-slate-300 rounded-xl p-2.5 focus:ring-2 outline-none transition-shadow"
+                  style={{ '--tw-ring-color': careerInfo.hex }}
+                  value={formData.nivelCaso} onChange={e => setFormData({...formData, nivelCaso: e.target.value})}>
+                  {NIVELES_CASO.map(n => <option key={n} value={n}>{n}</option>)}
                 </select>
               </div>
             </div>
@@ -1186,6 +1229,15 @@
         ? caseData.interacciones 
         : (caseData.observacion ? [{id: 'old', fecha: caseData.fecha ? caseData.fecha + 'T12:00:00.000Z' : new Date().toISOString(), texto: caseData.observacion, rol: 'sistema'}] : []);
 
+      const getNivelStyle = (nivel) => {
+        switch(nivel) {
+          case 'Caso leve': return 'text-emerald-600 bg-emerald-100 border-emerald-200';
+          case 'Caso medio': return 'text-amber-600 bg-amber-100 border-amber-200';
+          case 'Caso crítico': return 'text-red-600 bg-red-100 border-red-200';
+          default: return 'text-slate-600 bg-slate-100 border-slate-200';
+        }
+      };
+
       return (
         <div className="space-y-6 relative animate-fade-in">
           
@@ -1310,6 +1362,12 @@
                       ))}
                     </div>
                   )}
+
+                  <div className="flex items-center gap-2">
+                     <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-bold border ${getNivelStyle(caseData.nivelCaso)}`}>
+                       <AlertTriangle size={12} className="mr-1" /> Gravedad: {caseData.nivelCaso || 'Sin especificar'}
+                     </span>
+                  </div>
 
                   <div>
                     <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Carrera</p>
