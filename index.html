@@ -93,9 +93,9 @@
       'Distancia': 'Contenidos en autogestión/Teams (grabados). Examen sincrónico. Tutorías y 3 encuentros opcionales. Chat con respuesta en 24hs.'
     };
 
-    const STATUSES = ['Solicitud de baja', 'En seguimiento', 'Retenido', 'Baja definitiva'];
+    const STATUSES = ['Detección temprana', 'Solicita ayuda económica', 'Solicitud de baja', 'En seguimiento', 'Retenido', 'Baja definitiva'];
     const REASONS = ['Económico', 'Falta de tiempo / Horarios', 'Laboral', 'Académico', 'Personal / Salud', 'Otro'];
-    const STUDENT_TYPES = ['Ingresante', 'No inicio', 'No continua'];
+    const STUDENT_TYPES = ['Ingresante', 'Alumno activo', 'Alumno por egresar'];
     const BAJA_SUBCATEGORIES = ['No quiere seguir en Cervantes', 'Solicita postergar para el próximo inicio', 'Otro'];
     const NIVELES_CASO = [
       'Nivel 1 — Riesgo Bajo',
@@ -104,7 +104,7 @@
       'Nivel 4 — Baja No Económica'
     ];
 
-    // --- COMPONENTE PRINCIPAL (APP) ---
+    // --- FUNCIONES GLOBALES DE IA ---
     function App() {
       const [cases, setCases] = useState([]);
       const [currentView, setCurrentView] = useState('list'); 
@@ -224,7 +224,7 @@
 
           let estadoExport = c.estado;
           if (c.estado === 'Baja definitiva' && c.detalleBaja) {
-            estadoExport = `Baja definitiva (${c.detalleBaja})`;
+            estadoExport = `Baja definitiva - ${c.tipoBaja || 'NO CONTINUA'} (${c.detalleBaja})`;
           }
 
           return {
@@ -406,6 +406,7 @@
               {currentView === 'archived' && <CaseList cases={archivedCases} onSelect={(id) => navigateTo('detail', id)} title="Casos Cerrados (Retenidos y Bajas)" emptyMsg="Aún no hay casos archivados." />}
               {currentView === 'new' && (
                 <CaseForm 
+                  cases={cases}
                   caseToEdit={selectedCaseId ? cases.find(c => c.id === selectedCaseId) : null} 
                   onSave={handleSaveCase} 
                   onCancel={() => navigateTo('list')} 
@@ -457,7 +458,7 @@
       const retained = filteredCases.filter(c => c.estado === 'Retenido').length;
       const droppedCases = filteredCases.filter(c => c.estado === 'Baja definitiva');
       const dropped = droppedCases.length;
-      const inProgress = filteredCases.filter(c => c.estado === 'En seguimiento' || c.estado === 'Solicitud de baja').length;
+      const inProgress = filteredCases.filter(c => c.estado !== 'Retenido' && c.estado !== 'Baja definitiva').length;
 
       const retainedPct = total === 0 ? 0 : Math.round((retained / total) * 100);
       const droppedPct = total === 0 ? 0 : Math.round((dropped / total) * 100);
@@ -699,12 +700,12 @@
                               {c.motivo}
                             </span>
                             <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold border ${getNivelStyle(c.nivelCaso)}`}>
-                              <AlertTriangle size={10} className="mr-1" /> {c.nivelCaso || 'Sin nivel'}
+                              <AlertTriangle size={10} className="mr-1" /> {(c.nivelCaso || '').split('—')[0] || 'Sin nivel'}
                             </span>
                           </div>
                           {c.estado === 'Baja definitiva' && c.detalleBaja && (
                             <div className="mt-1.5 text-[10px] text-red-600 font-medium leading-tight">
-                              └ {c.detalleBaja}
+                              └ {c.tipoBaja || 'NO CONTINUA'} - {c.detalleBaja}
                             </div>
                           )}
                         </td>
@@ -736,21 +737,24 @@
       if (status === 'En seguimiento') styles = "bg-indigo-100 text-indigo-800 border border-indigo-200";
       if (status === 'Solicitud de baja') styles = "bg-amber-100 text-amber-800 border border-amber-200";
       if (status === 'Baja definitiva') styles = "bg-red-100 text-red-800 border border-red-200";
+      if (status === 'Detección temprana') styles = "bg-teal-100 text-teal-800 border border-teal-200";
+      if (status === 'Solicita ayuda económica') styles = "bg-blue-100 text-blue-800 border border-blue-200";
 
       return <span className={`px-2.5 py-1.5 rounded-md text-xs font-bold shadow-sm ${styles}`}>{status}</span>;
     }
 
     // --- CASE FORM COMPONENT ---
-    function CaseForm({ caseToEdit = null, onSave, onCancel }) {
+    function CaseForm({ caseToEdit = null, onSave, onCancel, cases = [] }) {
       const [formData, setFormData] = useState(caseToEdit || {
-        matricula: '', nombre: '', telefono: '', carrera: CAREERS[0].name, modalidad: CAREERS[0].modalities[0], tipoAlumno: [], nivelCaso: NIVELES_CASO[0], estado: 'Solicitud de baja', motivo: REASONS[0], empresaAmiga: false, nombreEmpresa: '', observacion: '', detalleBaja: BAJA_SUBCATEGORIES[0], detalleBajaOtro: ''
+        matricula: '', nombre: '', telefono: '', carrera: CAREERS[0].name, modalidad: CAREERS[0].modalities[0], tipoAlumno: [], nivelCaso: NIVELES_CASO[0], estado: 'Detección temprana', motivo: REASONS[0], empresaAmiga: false, nombreEmpresa: '', observacion: '', tipoBaja: 'NO CONTINUA', detalleBaja: BAJA_SUBCATEGORIES[0], detalleBajaOtro: ''
       });
 
       useEffect(() => {
         if (caseToEdit) setFormData({
           ...caseToEdit,
           tipoAlumno: caseToEdit.tipoAlumno || [],
-          nivelCaso: caseToEdit.nivelCaso || NIVELES_CASO[0]
+          nivelCaso: caseToEdit.nivelCaso || NIVELES_CASO[0],
+          tipoBaja: caseToEdit.tipoBaja || 'NO CONTINUA'
         });
       }, [caseToEdit]);
 
@@ -761,6 +765,7 @@
           dataToSave.detalleBaja = dataToSave.detalleBaja === 'Otro' ? dataToSave.detalleBajaOtro : dataToSave.detalleBaja;
         } else {
           dataToSave.detalleBaja = null;
+          dataToSave.tipoBaja = null;
         }
         onSave(dataToSave);
       };
@@ -807,16 +812,24 @@
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">Matrícula</label>
-                <input required type="text" className="w-full border border-slate-300 rounded-xl p-2.5 focus:ring-2 outline-none transition-shadow"
-                  style={{ '--tw-ring-color': careerInfo.hex }}
-                  value={formData.matricula} onChange={e => setFormData({...formData, matricula: e.target.value})} />
-              </div>
-              <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-1">Nombre y Apellido</label>
                 <input required type="text" className="w-full border border-slate-300 rounded-xl p-2.5 focus:ring-2 outline-none transition-shadow"
                   style={{ '--tw-ring-color': careerInfo.hex }}
                   value={formData.nombre} onChange={e => setFormData({...formData, nombre: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">Matrícula</label>
+                {(() => {
+                  const isDuplicate = cases.some(c => c.matricula.trim() === formData.matricula.trim() && c.matricula.trim() !== '' && (!caseToEdit || c.id !== caseToEdit.id));
+                  return (
+                    <>
+                      <input required type="text" className={`w-full border rounded-xl p-2.5 focus:ring-2 outline-none transition-shadow ${isDuplicate ? 'border-red-400 bg-red-50' : 'border-slate-300'}`}
+                        style={{ '--tw-ring-color': careerInfo.hex }}
+                        value={formData.matricula} onChange={e => setFormData({...formData, matricula: e.target.value})} />
+                      {isDuplicate && <span className="text-red-500 text-xs font-bold mt-1 block flex items-center gap-1"><AlertTriangle size={12}/> Matrícula ya registrada en otro caso activo.</span>}
+                    </>
+                  );
+                })()}
               </div>
             </div>
 
@@ -873,12 +886,21 @@
             </div>
 
             {formData.estado === 'Baja definitiva' && (
-              <div className="bg-red-50 p-4 rounded-xl border border-red-200 animate-fade-in">
-                <label className="block text-sm font-bold text-red-800 mb-2">Especificar Detalle de la Baja Definitiva</label>
-                <select className="w-full border border-red-200 bg-white rounded-lg p-2.5 focus:ring-2 outline-none mb-3 text-sm text-slate-700"
-                  value={formData.detalleBaja || BAJA_SUBCATEGORIES[0]} onChange={e => setFormData({...formData, detalleBaja: e.target.value})}>
-                  {BAJA_SUBCATEGORIES.map(b => <option key={b} value={b}>{b}</option>)}
-                </select>
+              <div className="bg-red-50 p-4 rounded-xl border border-red-200 animate-fade-in col-span-full">
+                <label className="block text-sm font-bold text-red-800 mb-2">Especificar Tipo y Detalle de la Baja Definitiva</label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+                  <select 
+                    className="w-full border border-red-200 bg-white rounded-lg p-2.5 focus:ring-2 focus:ring-red-400 outline-none text-sm text-slate-700"
+                    value={formData.tipoBaja || 'NO CONTINUA'} onChange={e => setFormData({...formData, tipoBaja: e.target.value})}>
+                    <option value="NO CONTINUA">NO CONTINUA</option>
+                    <option value="NO INICIA">NO INICIA</option>
+                  </select>
+                  <select 
+                    className="w-full border border-red-200 bg-white rounded-lg p-2.5 focus:ring-2 focus:ring-red-400 outline-none text-sm text-slate-700"
+                    value={formData.detalleBaja || BAJA_SUBCATEGORIES[0]} onChange={e => setFormData({...formData, detalleBaja: e.target.value})}>
+                    {BAJA_SUBCATEGORIES.map(b => <option key={b} value={b}>{b}</option>)}
+                  </select>
+                </div>
                 {formData.detalleBaja === 'Otro' && (
                   <input required type="text" placeholder="Escribe el motivo detallado aquí..." className="w-full border border-red-200 bg-white rounded-lg p-2.5 text-sm focus:ring-2 outline-none"
                     value={formData.detalleBajaOtro} onChange={e => setFormData({...formData, detalleBajaOtro: e.target.value})} />
@@ -957,6 +979,7 @@
     function CaseDetail({ caseData, onBack, onUpdate, onEdit, onDelete }) {
       const [showDeleteModal, setShowDeleteModal] = useState(false);
       const [showBajaModal, setShowBajaModal] = useState(false);
+      const [tipoBaja, setTipoBaja] = useState('NO CONTINUA');
       const [bajaReason, setBajaReason] = useState(BAJA_SUBCATEGORIES[0]);
       const [bajaOtro, setBajaOtro] = useState('');
 
@@ -997,7 +1020,7 @@
 
       const confirmBajaDefinitiva = () => {
         const finalReason = bajaReason === 'Otro' ? bajaOtro : bajaReason;
-        onUpdate({ ...caseData, estado: 'Baja definitiva', detalleBaja: finalReason });
+        onUpdate({ ...caseData, estado: 'Baja definitiva', tipoBaja: tipoBaja, detalleBaja: finalReason });
         setShowBajaModal(false);
       };
 
@@ -1141,9 +1164,18 @@
                   <XCircle size={32} />
                 </div>
                 <h3 className="text-xl font-bold text-center text-slate-800 mb-2">Confirmar Baja Definitiva</h3>
-                <p className="text-center text-slate-500 font-medium mb-6">Por favor, especifica el motivo final por el que el alumno se da de baja.</p>
+                <p className="text-center text-slate-500 font-medium mb-6">Por favor, especifica el tipo y motivo final de la baja.</p>
                 
-                <div className="mb-6 text-left">
+                <div className="mb-6 text-left space-y-3">
+                  <select 
+                    className="w-full border border-slate-300 rounded-xl p-3 focus:ring-2 focus:ring-red-400 outline-none text-slate-700 bg-slate-50"
+                    value={tipoBaja} 
+                    onChange={e => setTipoBaja(e.target.value)}
+                  >
+                    <option value="NO CONTINUA">NO CONTINUA</option>
+                    <option value="NO INICIA">NO INICIA</option>
+                  </select>
+
                   <select 
                     className="w-full border border-slate-300 rounded-xl p-3 focus:ring-2 focus:ring-red-400 outline-none text-slate-700 bg-slate-50"
                     value={bajaReason} 
@@ -1153,7 +1185,7 @@
                   </select>
                   
                   {bajaReason === 'Otro' && (
-                    <div className="mt-3 animate-fade-in">
+                    <div className="animate-fade-in">
                       <input 
                         type="text" 
                         placeholder="Escribe el motivo detallado..." 
@@ -1217,7 +1249,9 @@
                   <div className="flex flex-col items-end">
                     <StatusBadge status={caseData.estado} />
                     {caseData.estado === 'Baja definitiva' && caseData.detalleBaja && (
-                      <span className="text-[10px] text-red-500 font-bold mt-1 text-right max-w-[120px] leading-tight">{caseData.detalleBaja}</span>
+                      <span className="text-[10px] text-red-500 font-bold mt-1 text-right max-w-[120px] leading-tight">
+                        {caseData.tipoBaja || 'NO CONTINUA'} - {caseData.detalleBaja}
+                      </span>
                     )}
                   </div>
                 </div>
