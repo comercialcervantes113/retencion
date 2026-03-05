@@ -11,7 +11,7 @@
   <!-- Babel para compilar React en el navegador -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   
-  <!-- SheetJS para exportar a Excel real (.xlsx) -->
+  <!-- SheetJS para exportar e importar a Excel real (.xlsx) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
   <!-- Mapa de Importación para React y Lucide Icons -->
@@ -52,7 +52,7 @@
   <script type="text/babel" data-type="module">
     import React, { useState, useEffect, useMemo, useRef } from 'react';
     import { createRoot } from 'react-dom/client';
-    import { LayoutDashboard, Users, UserPlus, MessageCircle, Phone, Search, Filter, Save, ChevronRight, ArrowLeft, CheckCircle2, AlertCircle, XCircle, Clock, Edit2, Trash2, Archive, Database, Download, Send, User, MessageSquare, PlusCircle, Mic, Loader2, Sparkles, AlertTriangle } from 'lucide-react';
+    import { LayoutDashboard, Users, UserPlus, MessageCircle, Phone, Search, Filter, Save, ChevronRight, ArrowLeft, CheckCircle2, AlertCircle, XCircle, Clock, Edit2, Trash2, Archive, Database, Download, Send, User, MessageSquare, PlusCircle, Mic, Loader2, Sparkles, AlertTriangle, Upload, Image as ImageIcon } from 'lucide-react';
     
     // --- INTEGRACIÓN DE FIREBASE ---
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
@@ -97,9 +97,14 @@
     const REASONS = ['Económico', 'Falta de tiempo / Horarios', 'Laboral', 'Académico', 'Personal / Salud', 'Otro'];
     const STUDENT_TYPES = ['Ingresante', 'No inicio', 'No continua'];
     const BAJA_SUBCATEGORIES = ['No quiere seguir en Cervantes', 'Solicita postergar para el próximo inicio', 'Otro'];
-    const NIVELES_CASO = ['Caso leve', 'Caso medio', 'Caso crítico'];
+    const NIVELES_CASO = [
+      'Nivel 1 — Riesgo Bajo (Alerta Temprana)',
+      'Nivel 2 — Riesgo Medio (Gestión Activa)',
+      'Nivel 3 — Riesgo Crítico (Pre-Baja)',
+      'Nivel 4 — Baja No Económica'
+    ];
 
-    // --- FUNCIÓN GLOBAL DE IA PARA CORREGIR TEXTOS ---
+    // --- FUNCIONES GLOBALES DE IA ---
     const correctTextWithAI = async (text) => {
       const apiKey = ""; 
       const promptText = `Eres un experto asesor de retención estudiantil. Corrige la ortografía, gramática y mejora la redacción del siguiente texto para que suene claro, profesional y empático. Mantenlo conciso. No agregues información inventada ni cambies el sentido original. Devuelve ÚNICAMENTE el texto corregido, sin comillas adicionales ni explicaciones:\n\n${text}`;
@@ -118,6 +123,42 @@
       } catch (error) {
         console.error("Error AI correction:", error);
         return text; 
+      }
+    };
+
+    const extractDataFromImage = async (base64Image) => {
+      const apiKey = ""; 
+      const promptText = `Analiza esta captura de pantalla de un sistema de gestión de alumnos. Extrae los siguientes datos y devuélvelos estrictamente en formato JSON válido sin formato markdown (solo las llaves {} y su contenido en JSON). Formato a seguir:
+      {
+        "matricula": "Número de matrícula (solo números)",
+        "nombre": "Nombres y Apellidos combinados (ej. GRANEROS ANTONELLA YAMIL)",
+        "carrera": "El nombre de la carrera sin la palabra 'tecnicatura' ni el plan (ej. solo 'Recursos Humanos', 'Administración de Empresas', 'Marketing', 'Analista de Sistemas')",
+        "modalidad": "La modalidad (Presencial, Semipresencial o Distancia)",
+        "telefono": "El número celular (solo números y guiones, omite el fijo si hay celular)"
+      }
+      Si algún dato no aparece en la imagen, pon una cadena de texto vacía "". ¡Solo devuelve el JSON puro!`;
+
+      try {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{
+              parts: [
+                { text: promptText },
+                { inlineData: { mimeType: "image/png", data: base64Image.split(',')[1] } }
+              ]
+            }]
+          })
+        });
+        if (!response.ok) throw new Error('Network response was not ok');
+        const data = await response.json();
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+        const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+        return JSON.parse(cleanText);
+      } catch (error) {
+        console.error("Error AI Vision:", error);
+        return null;
       }
     };
 
@@ -268,6 +309,54 @@
         window.XLSX.writeFile(workbook, `Reporte_Retencion_${new Date().toISOString().split('T')[0]}.xlsx`);
       };
 
+      const handleImportExcel = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+           try {
+              const data = new Uint8Array(event.target.result);
+              const workbook = window.XLSX.read(data, {type: 'array'});
+              const firstSheetName = workbook.SheetNames[0];
+              const worksheet = workbook.Sheets[firstSheetName];
+              const json = window.XLSX.utils.sheet_to_json(worksheet);
+
+              const casesRef = collection(db, 'casos');
+              let count = cases.length;
+              
+              for(let row of json) {
+                  count++;
+                  const caseNumber = row['Nº Caso'] || `CASO-${String(count).padStart(3, '0')}`;
+                  
+                  // Intentar mapear campos a lo mejor posible
+                  const newCase = {
+                      caseNumber: caseNumber,
+                      matricula: String(row['Matrícula'] || ''),
+                      nombre: row['Nombre'] || 'Alumno Importado',
+                      telefono: String(row['Teléfono'] || ''),
+                      carrera: row['Carrera'] || CAREERS[0].name,
+                      modalidad: row['Modalidad'] || 'Presencial',
+                      nivelCaso: row['Nivel de Caso'] || NIVELES_CASO[0],
+                      estado: row['Estado'] && row['Estado'].includes('Baja') ? 'Baja definitiva' : (row['Estado'] || 'Solicitud de baja'),
+                      motivo: row['Motivo Principal'] || REASONS[0],
+                      empresaAmiga: row['Empresa Amiga'] === 'Sí',
+                      nombreEmpresa: row['Nombre Empresa'] !== '-' ? (row['Nombre Empresa'] || '') : '',
+                      observacion: row['Historial de Observaciones'] || 'Caso importado desde Excel externo.', 
+                      fecha: row['Fecha de Registro'] || new Date().toISOString().split('T')[0],
+                      tipoAlumno: []
+                  }
+                  await addDoc(casesRef, newCase);
+              }
+              alert(`¡Se importaron ${json.length} casos exitosamente!`);
+           } catch(err) {
+              console.error("Error importando:", err);
+              alert("Hubo un error importando el Excel. Revisa el formato de las columnas.");
+           }
+           e.target.value = null; // reset input
+        };
+        reader.readAsArrayBuffer(file);
+      };
+
       if (loading) {
         return (
           <div className="flex h-screen w-full items-center justify-center bg-slate-50">
@@ -326,7 +415,7 @@
                 <LayoutDashboard size={20} /> Dashboard
               </button>
               
-              <div className="pt-6 pb-2">
+              <div className="pt-6 pb-2 space-y-2">
                 <div className="border-t border-slate-700/50 mb-4"></div>
                 <button 
                   onClick={handleExportExcel}
@@ -334,6 +423,10 @@
                 >
                   <Download size={18} /> Descargar Excel
                 </button>
+                <label className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg transition-colors bg-slate-800/50 text-slate-300 hover:bg-slate-700 hover:text-white border border-slate-700 cursor-pointer">
+                  <Upload size={18} /> Importar Excel
+                  <input type="file" accept=".xlsx, .xls, .csv" className="hidden" onChange={handleImportExcel} />
+                </label>
               </div>
             </nav>
 
@@ -459,7 +552,7 @@
               </select>
               <select className="bg-white/60 backdrop-blur-sm border border-white/50 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium" value={filterNivel} onChange={e => setFilterNivel(e.target.value)}>
                 <option value="">Todos los Niveles</option>
-                {NIVELES_CASO.map(n => <option key={n} value={n}>{n}</option>)}
+                {NIVELES_CASO.map(n => <option key={n} value={n.split('—')[0].trim()}>{n.split('—')[0].trim()}</option>)}
               </select>
               <select className="bg-white/60 backdrop-blur-sm border border-white/50 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium" value={filterReason} onChange={e => setFilterReason(e.target.value)}>
                 <option value="">Todos los Motivos</option>
@@ -590,12 +683,12 @@
       };
 
       const getNivelStyle = (nivel) => {
-        switch(nivel) {
-          case 'Caso leve': return 'text-emerald-600 bg-emerald-100 border-emerald-200';
-          case 'Caso medio': return 'text-amber-600 bg-amber-100 border-amber-200';
-          case 'Caso crítico': return 'text-red-600 bg-red-100 border-red-200';
-          default: return 'text-slate-600 bg-slate-100 border-slate-200';
-        }
+        if (!nivel) return 'text-slate-600 bg-slate-100 border-slate-200';
+        if (nivel.includes('Nivel 1')) return 'text-emerald-700 bg-emerald-100 border-emerald-200';
+        if (nivel.includes('Nivel 2')) return 'text-amber-700 bg-amber-100 border-amber-200';
+        if (nivel.includes('Nivel 3')) return 'text-red-700 bg-red-100 border-red-200';
+        if (nivel.includes('Nivel 4')) return 'text-slate-700 bg-slate-200 border-slate-300';
+        return 'text-slate-600 bg-slate-100 border-slate-200';
       };
 
       return (
@@ -665,7 +758,7 @@
                               {c.motivo}
                             </span>
                             <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold border ${getNivelStyle(c.nivelCaso)}`}>
-                              <AlertTriangle size={10} className="mr-1" /> {c.nivelCaso || 'Sin nivel'}
+                              <AlertTriangle size={10} className="mr-1" /> {(c.nivelCaso || '').split('—')[0] || 'Sin nivel'}
                             </span>
                           </div>
                           {c.estado === 'Baja definitiva' && c.detalleBaja && (
@@ -714,6 +807,7 @@
 
       const [isRecording, setIsRecording] = useState(false);
       const [isProcessing, setIsProcessing] = useState(false);
+      const [isExtracting, setIsExtracting] = useState(false);
       const recognitionRef = useRef(null);
 
       useEffect(() => {
@@ -723,6 +817,55 @@
           nivelCaso: caseToEdit.nivelCaso || NIVELES_CASO[0]
         });
       }, [caseToEdit]);
+
+      // Efecto para escuchar la captura de pantalla por Pegar (Ctrl+V)
+      useEffect(() => {
+        const handlePaste = async (e) => {
+            const items = e.clipboardData.items;
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].type.indexOf("image") !== -1) {
+                    const blob = items[i].getAsFile();
+                    const reader = new FileReader();
+                    reader.onload = async (event) => {
+                        setIsExtracting(true);
+                        const base64 = event.target.result;
+                        const extractedData = await extractDataFromImage(base64);
+                        
+                        if (extractedData) {
+                            setFormData(prev => {
+                                let matchedCareer = prev.carrera;
+                                let matchedModality = prev.modalidad;
+                                
+                                if (extractedData.carrera) {
+                                    const found = CAREERS.find(c => extractedData.carrera.toLowerCase().includes(c.name.toLowerCase()) || c.name.toLowerCase().includes(extractedData.carrera.toLowerCase()));
+                                    if (found) matchedCareer = found.name;
+                                }
+                                
+                                if (extractedData.modalidad) {
+                                     const isExactMod = ALL_MODALITIES.find(m => extractedData.modalidad.toLowerCase().includes(m.toLowerCase()));
+                                     if (isExactMod) matchedModality = isExactMod;
+                                }
+
+                                return {
+                                    ...prev,
+                                    matricula: extractedData.matricula || prev.matricula,
+                                    nombre: extractedData.nombre || prev.nombre,
+                                    telefono: extractedData.telefono || prev.telefono,
+                                    carrera: matchedCareer,
+                                    modalidad: matchedModality
+                                };
+                            });
+                        }
+                        setIsExtracting(false);
+                    };
+                    reader.readAsDataURL(blob);
+                    break;
+                }
+            }
+        };
+        window.addEventListener("paste", handlePaste);
+        return () => window.removeEventListener("paste", handlePaste);
+      }, []);
 
       const handleSubmit = (e) => {
         e.preventDefault();
@@ -826,14 +969,34 @@
           className="max-w-3xl mx-auto bg-white rounded-2xl shadow-md border-t-4 p-8 transition-all duration-300 animate-fade-in"
           style={{ borderTopColor: careerInfo.hex }}
         >
-          <div className="flex items-center gap-3 mb-6 border-b pb-4 border-slate-100">
-            <div className="p-2.5 rounded-xl" style={{ backgroundColor: careerInfo.hex + '20', color: careerInfo.hex }}>
-              {caseToEdit ? <Edit2 size={24} /> : <UserPlus size={24} />}
+          <div className="flex items-center justify-between mb-6 border-b pb-4 border-slate-100">
+            <div className="flex items-center gap-3">
+               <div className="p-2.5 rounded-xl" style={{ backgroundColor: careerInfo.hex + '20', color: careerInfo.hex }}>
+                 {caseToEdit ? <Edit2 size={24} /> : <UserPlus size={24} />}
+               </div>
+               <h3 className="text-xl font-bold text-slate-800">
+                 {caseToEdit ? 'Editar Caso Existente' : 'Registrar Estudiante'}
+               </h3>
             </div>
-            <h3 className="text-xl font-bold text-slate-800">
-              {caseToEdit ? 'Editar Caso Existente' : 'Datos del Alumno y Motivo de Baja'}
-            </h3>
           </div>
+
+          {!caseToEdit && (
+            <div className="bg-indigo-50 border-2 border-dashed border-indigo-200 rounded-xl p-4 text-center mb-6 relative overflow-hidden transition-all">
+               {isExtracting ? (
+                  <div className="flex flex-col items-center justify-center gap-2 text-indigo-600 font-bold animate-pulse py-2">
+                    <Loader2 className="animate-spin" size={24} />
+                    <span>Analizando imagen con IA y extrayendo datos...</span>
+                  </div>
+               ) : (
+                  <div>
+                    <ImageIcon className="mx-auto text-indigo-400 mb-2" size={24} />
+                    <p className="text-sm text-indigo-800 font-medium">
+                      💡 <strong>Autocompletado mágico:</strong> Pega una captura de pantalla (Ctrl+V) del sistema de alumnos y la IA llenará los datos por ti.
+                    </p>
+                  </div>
+               )}
+            </div>
+          )}
           
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -853,8 +1016,8 @@
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">Teléfono (WhatsApp)</label>
-                <input required type="text" placeholder="Ej: 5493512345678" className="w-full border border-slate-300 rounded-xl p-2.5 focus:ring-2 outline-none transition-shadow"
+                <label className="block text-sm font-semibold text-slate-700 mb-1">Teléfono Celular</label>
+                <input required type="text" placeholder="Ej: 351..." className="w-full border border-slate-300 rounded-xl p-2.5 focus:ring-2 outline-none transition-shadow"
                   style={{ '--tw-ring-color': careerInfo.hex }}
                   value={formData.telefono} onChange={e => setFormData({...formData, telefono: e.target.value})} />
               </div>
@@ -886,19 +1049,19 @@
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">Estado del caso</label>
-                <select className="w-full border border-slate-300 rounded-xl p-2.5 focus:ring-2 outline-none transition-shadow"
-                  style={{ '--tw-ring-color': careerInfo.hex }}
-                  value={formData.estado} onChange={e => setFormData({...formData, estado: e.target.value})}>
-                  {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-              <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-1">Nivel de Gravedad</label>
                 <select className="w-full border border-slate-300 rounded-xl p-2.5 focus:ring-2 outline-none transition-shadow"
                   style={{ '--tw-ring-color': careerInfo.hex }}
                   value={formData.nivelCaso} onChange={e => setFormData({...formData, nivelCaso: e.target.value})}>
                   {NIVELES_CASO.map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">Estado del caso</label>
+                <select className="w-full border border-slate-300 rounded-xl p-2.5 focus:ring-2 outline-none transition-shadow"
+                  style={{ '--tw-ring-color': careerInfo.hex }}
+                  value={formData.estado} onChange={e => setFormData({...formData, estado: e.target.value})}>
+                  {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
             </div>
@@ -1026,7 +1189,7 @@
       const [bajaOtro, setBajaOtro] = useState('');
 
       const [newInteraction, setNewInteraction] = useState('');
-      const [interactionType, setInteractionType] = useState('indagacion'); // 'indagacion' | 'seguimiento' | 'cierre'
+      const [interactionType, setInteractionType] = useState('indagacion'); 
 
       const [isRecording, setIsRecording] = useState(false);
       const [isProcessing, setIsProcessing] = useState(false);
@@ -1230,12 +1393,12 @@
         : (caseData.observacion ? [{id: 'old', fecha: caseData.fecha ? caseData.fecha + 'T12:00:00.000Z' : new Date().toISOString(), texto: caseData.observacion, rol: 'sistema'}] : []);
 
       const getNivelStyle = (nivel) => {
-        switch(nivel) {
-          case 'Caso leve': return 'text-emerald-600 bg-emerald-100 border-emerald-200';
-          case 'Caso medio': return 'text-amber-600 bg-amber-100 border-amber-200';
-          case 'Caso crítico': return 'text-red-600 bg-red-100 border-red-200';
-          default: return 'text-slate-600 bg-slate-100 border-slate-200';
-        }
+        if (!nivel) return 'text-slate-600 bg-slate-100 border-slate-200';
+        if (nivel.includes('Nivel 1')) return 'text-emerald-700 bg-emerald-100 border-emerald-200';
+        if (nivel.includes('Nivel 2')) return 'text-amber-700 bg-amber-100 border-amber-200';
+        if (nivel.includes('Nivel 3')) return 'text-red-700 bg-red-100 border-red-200';
+        if (nivel.includes('Nivel 4')) return 'text-slate-700 bg-slate-200 border-slate-300';
+        return 'text-slate-600 bg-slate-100 border-slate-200';
       };
 
       return (
@@ -1365,7 +1528,7 @@
 
                   <div className="flex items-center gap-2">
                      <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-bold border ${getNivelStyle(caseData.nivelCaso)}`}>
-                       <AlertTriangle size={12} className="mr-1" /> Gravedad: {caseData.nivelCaso || 'Sin especificar'}
+                       <AlertTriangle size={12} className="mr-1" /> {(caseData.nivelCaso || '').split('—')[0] || 'Sin nivel'}
                      </span>
                   </div>
 
