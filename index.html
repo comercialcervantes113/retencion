@@ -93,7 +93,17 @@
       'Distancia': 'Contenidos en autogestión/Teams (grabados). Examen sincrónico. Tutorías y 3 encuentros opcionales. Chat con respuesta en 24hs.'
     };
 
-    const STATUSES = ['Detección temprana', 'Solicita ayuda económica', 'Solicitud de baja', 'En seguimiento', 'Retenido', 'Baja definitiva'];
+    const STATUSES = ['Nuevo caso', 'En seguimiento', 'Esperando respuesta', 'Retenido', 'Baja definitiva'];
+    const SUB_STATUSES = [
+      'Solicitud de baja', 
+      'Solicitud de postergar su inicio', 
+      'Detección por mora', 
+      'Detección por inasistencia', 
+      'Detección por otro motivo', 
+      'Derivado a Bienestar', 
+      'Derivado a director de carreras'
+    ];
+
     const REASONS = ['Económico', 'Falta de tiempo / Horarios', 'Laboral', 'Académico', 'Personal / Salud', 'Otro'];
     const STUDENT_TYPES = ['Ingresante', 'Alumno activo', 'Alumno por egresar'];
     const BAJA_SUBCATEGORIES = ['No quiere seguir en Cervantes', 'Solicita postergar para el próximo inicio', 'Otro'];
@@ -104,7 +114,7 @@
       'Nivel 4 — Baja No Económica'
     ];
 
-    // --- FUNCIONES GLOBALES DE IA ---
+    // --- COMPONENTE PRINCIPAL (APP) ---
     function App() {
       const [cases, setCases] = useState([]);
       const [currentView, setCurrentView] = useState('list'); 
@@ -197,7 +207,7 @@
           await deleteDoc(docRef);
           
           if (deletedCase && (deletedCase.estado === 'Retenido' || deletedCase.estado === 'Baja definitiva')) {
-            navigateTo('archived');
+            navigateTo('resolved');
           } else {
             navigateTo('list');
           }
@@ -238,6 +248,7 @@
             'Nivel de Caso': c.nivelCaso || 'No especificado',
             'Motivo Principal': c.motivo,
             'Estado': estadoExport,
+            'Subestado': c.subestado || 'No especificado',
             'Empresa Amiga': c.empresaAmiga ? 'Sí' : 'No',
             'Nombre Empresa': c.nombreEmpresa || '-',
             'Historial de Observaciones': historialTxt,
@@ -278,7 +289,8 @@
                       carrera: row['Carrera'] || CAREERS[0].name,
                       modalidad: row['Modalidad'] || 'Presencial',
                       nivelCaso: row['Nivel de Caso'] || NIVELES_CASO[0],
-                      estado: row['Estado'] && row['Estado'].includes('Baja') ? 'Baja definitiva' : (row['Estado'] || 'Solicitud de baja'),
+                      estado: row['Estado'] && row['Estado'].includes('Baja') ? 'Baja definitiva' : (row['Estado'] || 'Nuevo caso'),
+                      subestado: row['Subestado'] || SUB_STATUSES[0],
                       motivo: row['Motivo Principal'] || REASONS[0],
                       empresaAmiga: row['Empresa Amiga'] === 'Sí',
                       nombreEmpresa: row['Nombre Empresa'] !== '-' ? (row['Nombre Empresa'] || '') : '',
@@ -310,7 +322,7 @@
       }
 
       const activeCases = cases.filter(c => c.estado !== 'Retenido' && c.estado !== 'Baja definitiva');
-      const archivedCases = cases.filter(c => c.estado === 'Retenido' || c.estado === 'Baja definitiva');
+      const resolvedCases = cases.filter(c => c.estado === 'Retenido' || c.estado === 'Baja definitiva');
 
       const MAX_DB_USAGE = 5000;
       const dbUsagePercent = Math.min((cases.length / MAX_DB_USAGE) * 100, 100);
@@ -337,11 +349,11 @@
                 {activeCases.length > 0 && <span className="ml-auto bg-indigo-800 text-xs px-2 py-0.5 rounded-full">{activeCases.length}</span>}
               </button>
               <button 
-                onClick={() => navigateTo('archived')}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${currentView === 'archived' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'}`}
+                onClick={() => navigateTo('resolved')}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${currentView === 'resolved' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'}`}
               >
-                <Archive size={20} /> Archivados
-                {archivedCases.length > 0 && <span className="ml-auto bg-slate-800 text-xs px-2 py-0.5 rounded-full">{archivedCases.length}</span>}
+                <CheckCircle2 size={20} /> Resueltos
+                {resolvedCases.length > 0 && <span className="ml-auto bg-slate-800 text-xs px-2 py-0.5 rounded-full">{resolvedCases.length}</span>}
               </button>
               <button 
                 onClick={() => navigateTo('new')}
@@ -394,7 +406,7 @@
               <h2 className="text-2xl font-semibold text-slate-800 capitalize">
                 {currentView === 'dashboard' && 'Panel de Control Global'}
                 {currentView === 'list' && 'Directorio de Casos Activos'}
-                {currentView === 'archived' && 'Historial de Casos Archivados'}
+                {currentView === 'resolved' && 'Historial de Casos Resueltos'}
                 {currentView === 'new' && (selectedCaseId ? 'Editar Caso' : 'Registrar Nuevo Caso')}
                 {currentView === 'detail' && 'Detalle y Seguimiento del Caso'}
               </h2>
@@ -402,8 +414,8 @@
 
             <div className="p-8 relative z-10">
               {currentView === 'dashboard' && <Dashboard cases={cases} />}
-              {currentView === 'list' && <CaseList cases={activeCases} onSelect={(id) => navigateTo('detail', id)} title="Casos Activos (En Gestión)" emptyMsg="No hay casos activos. Todos los registros están archivados o no hay datos." />}
-              {currentView === 'archived' && <CaseList cases={archivedCases} onSelect={(id) => navigateTo('detail', id)} title="Casos Cerrados (Retenidos y Bajas)" emptyMsg="Aún no hay casos archivados." />}
+              {currentView === 'list' && <CaseList cases={activeCases} onSelect={(id) => navigateTo('detail', id)} title="Casos Activos (En Gestión)" emptyMsg="No hay casos activos. Todos los registros están resueltos o no hay datos." />}
+              {currentView === 'resolved' && <CaseList cases={resolvedCases} onSelect={(id) => navigateTo('detail', id)} title="Casos Resueltos (Retenidos y Bajas)" emptyMsg="Aún no hay casos resueltos." />}
               {currentView === 'new' && (
                 <CaseForm 
                   cases={cases}
@@ -417,7 +429,7 @@
                   caseData={cases.find(c => c.id === selectedCaseId)} 
                   onBack={() => {
                     const c = cases.find(c => c.id === selectedCaseId);
-                    if (c && (c.estado === 'Retenido' || c.estado === 'Baja definitiva')) navigateTo('archived');
+                    if (c && (c.estado === 'Retenido' || c.estado === 'Baja definitiva')) navigateTo('resolved');
                     else navigateTo('list');
                   }} 
                   onUpdate={async (updatedCase) => {
@@ -440,6 +452,7 @@
       const [filterCareer, setFilterCareer] = useState('');
       const [filterReason, setFilterReason] = useState('');
       const [filterStatus, setFilterStatus] = useState('');
+      const [filterSubstatus, setFilterSubstatus] = useState('');
       const [filterModalidad, setFilterModalidad] = useState('');
       const [filterNivel, setFilterNivel] = useState('');
 
@@ -448,11 +461,12 @@
           if (filterCareer && c.carrera !== filterCareer) return false;
           if (filterReason && c.motivo !== filterReason) return false;
           if (filterStatus && c.estado !== filterStatus) return false;
+          if (filterSubstatus && c.subestado !== filterSubstatus) return false;
           if (filterModalidad && c.modalidad !== filterModalidad) return false;
           if (filterNivel && c.nivelCaso !== filterNivel) return false;
           return true;
         });
-      }, [cases, filterCareer, filterReason, filterStatus, filterModalidad, filterNivel]);
+      }, [cases, filterCareer, filterReason, filterStatus, filterSubstatus, filterModalidad, filterNivel]);
 
       const total = filteredCases.length;
       const retained = filteredCases.filter(c => c.estado === 'Retenido').length;
@@ -483,7 +497,7 @@
               <Filter className="text-indigo-600" size={20} />
               <span className="font-semibold text-slate-700">Filtros (Globales):</span>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
               <select className="bg-white/60 backdrop-blur-sm border border-white/50 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium" value={filterCareer} onChange={e => setFilterCareer(e.target.value)}>
                 <option value="">Todas las Carreras</option>
                 {CAREERS.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
@@ -494,7 +508,7 @@
               </select>
               <select className="bg-white/60 backdrop-blur-sm border border-white/50 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium" value={filterNivel} onChange={e => setFilterNivel(e.target.value)}>
                 <option value="">Todos los Niveles</option>
-                {NIVELES_CASO.map(n => <option key={n} value={n}>{n}</option>)}
+                {NIVELES_CASO.map(n => <option key={n} value={n.split('—')[0].trim()}>{n.split('—')[0].trim()}</option>)}
               </select>
               <select className="bg-white/60 backdrop-blur-sm border border-white/50 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium" value={filterReason} onChange={e => setFilterReason(e.target.value)}>
                 <option value="">Todos los Motivos</option>
@@ -503,6 +517,10 @@
               <select className="bg-white/60 backdrop-blur-sm border border-white/50 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
                 <option value="">Todos los Estados</option>
                 {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+              <select className="bg-white/60 backdrop-blur-sm border border-white/50 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium" value={filterSubstatus} onChange={e => setFilterSubstatus(e.target.value)}>
+                <option value="">Todos los Subestados</option>
+                {SUB_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
           </div>
@@ -656,7 +674,7 @@
                   <th className="p-5 font-semibold">Alumno</th>
                   <th className="p-5 font-semibold">Carrera y Modalidad</th>
                   <th className="p-5 font-semibold">Motivo y Nivel</th>
-                  <th className="p-5 font-semibold">Estado</th>
+                  <th className="p-5 font-semibold">Estado y Subestado</th>
                   <th className="p-5 font-semibold text-right">Acciones</th>
                 </tr>
               </thead>
@@ -703,14 +721,20 @@
                               <AlertTriangle size={10} className="mr-1" /> {(c.nivelCaso || '').split('—')[0] || 'Sin nivel'}
                             </span>
                           </div>
-                          {c.estado === 'Baja definitiva' && c.detalleBaja && (
-                            <div className="mt-1.5 text-[10px] text-red-600 font-medium leading-tight">
-                              └ {c.tipoBaja || 'NO CONTINUA'} - {c.detalleBaja}
-                            </div>
-                          )}
                         </td>
                         <td className="p-5">
-                          <StatusBadge status={c.estado} />
+                          <div className="flex flex-col gap-1.5 items-start">
+                            <StatusBadge status={c.estado} />
+                            {c.estado === 'Baja definitiva' ? (
+                              <div className="mt-1.5 text-[10px] text-red-600 font-bold leading-tight bg-red-50 border border-red-200 px-2 py-0.5 rounded">
+                                {c.tipoBaja || 'NO CONTINUA'} - {c.detalleBaja}
+                              </div>
+                            ) : (
+                              <span className="text-[10px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 uppercase tracking-wider">
+                                {c.subestado || 'Sin subestado'}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="p-5 text-right">
                           <button 
@@ -734,19 +758,18 @@
     function StatusBadge({ status }) {
       let styles = "bg-slate-100 text-slate-700";
       if (status === 'Retenido') styles = "bg-emerald-100 text-emerald-800 border border-emerald-200";
-      if (status === 'En seguimiento') styles = "bg-indigo-100 text-indigo-800 border border-indigo-200";
-      if (status === 'Solicitud de baja') styles = "bg-amber-100 text-amber-800 border border-amber-200";
       if (status === 'Baja definitiva') styles = "bg-red-100 text-red-800 border border-red-200";
-      if (status === 'Detección temprana') styles = "bg-teal-100 text-teal-800 border border-teal-200";
-      if (status === 'Solicita ayuda económica') styles = "bg-blue-100 text-blue-800 border border-blue-200";
+      if (status === 'Nuevo caso') styles = "bg-sky-100 text-sky-800 border border-sky-200";
+      if (status === 'En seguimiento') styles = "bg-indigo-100 text-indigo-800 border border-indigo-200";
+      if (status === 'Esperando respuesta') styles = "bg-amber-100 text-amber-800 border border-amber-200";
 
-      return <span className={`px-2.5 py-1.5 rounded-md text-xs font-bold shadow-sm ${styles}`}>{status}</span>;
+      return <span className={`px-2.5 py-1.5 rounded-md text-[11px] uppercase tracking-wider font-bold shadow-sm ${styles}`}>{status}</span>;
     }
 
     // --- CASE FORM COMPONENT ---
     function CaseForm({ caseToEdit = null, onSave, onCancel, cases = [] }) {
       const [formData, setFormData] = useState(caseToEdit || {
-        matricula: '', nombre: '', telefono: '', carrera: CAREERS[0].name, modalidad: CAREERS[0].modalities[0], tipoAlumno: [], nivelCaso: NIVELES_CASO[0], estado: 'Detección temprana', motivo: REASONS[0], empresaAmiga: false, nombreEmpresa: '', observacion: '', tipoBaja: 'NO CONTINUA', detalleBaja: BAJA_SUBCATEGORIES[0], detalleBajaOtro: ''
+        matricula: '', nombre: '', telefono: '', carrera: CAREERS[0].name, modalidad: CAREERS[0].modalities[0], tipoAlumno: [], nivelCaso: NIVELES_CASO[0], estado: 'Nuevo caso', subestado: SUB_STATUSES[0], motivo: REASONS[0], empresaAmiga: false, nombreEmpresa: '', observacion: '', tipoBaja: 'NO CONTINUA', detalleBaja: BAJA_SUBCATEGORIES[0], detalleBajaOtro: ''
       });
 
       useEffect(() => {
@@ -754,7 +777,9 @@
           ...caseToEdit,
           tipoAlumno: caseToEdit.tipoAlumno || [],
           nivelCaso: caseToEdit.nivelCaso || NIVELES_CASO[0],
-          tipoBaja: caseToEdit.tipoBaja || 'NO CONTINUA'
+          tipoBaja: caseToEdit.tipoBaja || 'NO CONTINUA',
+          estado: caseToEdit.estado || 'Nuevo caso',
+          subestado: caseToEdit.subestado || SUB_STATUSES[0]
         });
       }, [caseToEdit]);
 
@@ -858,7 +883,7 @@
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-1">Motivo principal</label>
                 <select className="w-full border border-slate-300 rounded-xl p-2.5 focus:ring-2 outline-none transition-shadow"
@@ -881,6 +906,14 @@
                   style={{ '--tw-ring-color': careerInfo.hex }}
                   value={formData.estado} onChange={e => setFormData({...formData, estado: e.target.value})}>
                   {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">Subestado</label>
+                <select className="w-full border border-slate-300 rounded-xl p-2.5 focus:ring-2 outline-none transition-shadow"
+                  style={{ '--tw-ring-color': careerInfo.hex }}
+                  value={formData.subestado} onChange={e => setFormData({...formData, subestado: e.target.value})}>
+                  {SUB_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
             </div>
@@ -1014,7 +1047,7 @@
         if (s === 'Baja definitiva') {
           setShowBajaModal(true);
         } else {
-          onUpdate({ ...caseData, estado: s, detalleBaja: null });
+          onUpdate({ ...caseData, estado: s, detalleBaja: null, tipoBaja: null });
         }
       };
 
@@ -1270,7 +1303,7 @@
 
                   <div className="flex items-center gap-2">
                      <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-bold border ${getNivelStyle(caseData.nivelCaso)}`}>
-                       <AlertTriangle size={12} className="mr-1" /> {caseData.nivelCaso || 'Sin especificar'}
+                       <AlertTriangle size={12} className="mr-1" /> {(caseData.nivelCaso || '').split('—')[0] || 'Sin especificar'}
                      </span>
                   </div>
 
@@ -1324,6 +1357,19 @@
 
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
                  <h4 className="font-bold text-slate-800 mb-4">Actualizar Estado Final</h4>
+                 
+                 <div className="mb-4">
+                   <label className="block text-xs font-bold text-slate-500 mb-1 uppercase">Subestado</label>
+                   <select 
+                     className="w-full border border-slate-300 rounded-xl p-2.5 focus:ring-2 focus:ring-indigo-400 outline-none text-sm font-medium text-slate-700 bg-slate-50"
+                     value={caseData.subestado || SUB_STATUSES[0]}
+                     onChange={(e) => onUpdate({ ...caseData, subestado: e.target.value })}
+                   >
+                     {SUB_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                   </select>
+                 </div>
+
+                 <label className="block text-xs font-bold text-slate-500 mb-2 uppercase">Estado General</label>
                  <div className="grid grid-cols-1 gap-2">
                     {STATUSES.map(s => (
                       <button 
@@ -1335,7 +1381,7 @@
                       </button>
                     ))}
                  </div>
-                 <p className="text-[10px] text-slate-400 mt-3 italic text-center leading-tight">Nota: Marcar como "Retenido" o "Baja" cerrará y enviará el caso a Archivados automáticamente.</p>
+                 <p className="text-[10px] text-slate-400 mt-3 italic text-center leading-tight">Nota: Marcar como "Retenido" o "Baja" cerrará y enviará el caso a Casos Resueltos automáticamente.</p>
               </div>
 
             </div>
@@ -1532,7 +1578,7 @@
                     <textarea 
                       rows={3}
                       className="w-full bg-white border border-slate-300 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none custom-scrollbar transition-all"
-                      placeholder="Redacta la observación, la oferta otorgada o la contestación obtenida..."
+                      placeholder="Redacta la observación..."
                       value={newInteraction}
                       onChange={(e) => setNewInteraction(e.target.value)}
                     ></textarea>
