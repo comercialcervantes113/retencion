@@ -177,9 +177,18 @@
 
       const handleSaveCase = async (newCase) => {
         try {
-          if (newCase.id) {
-            const docRef = doc(db, 'casos', newCase.id);
-            const { id, ...caseData } = newCase;
+          const cleanCase = { ...newCase };
+          
+          // Limpiar valores undefined para evitar el error de Firebase updateDoc()
+          Object.keys(cleanCase).forEach(key => {
+            if (cleanCase[key] === undefined) {
+              delete cleanCase[key];
+            }
+          });
+
+          if (cleanCase.id) {
+            const docRef = doc(db, 'casos', cleanCase.id);
+            const { id, ...caseData } = cleanCase;
             await updateDoc(docRef, caseData);
           } else {
             const casesRef = collection(db, 'casos');
@@ -187,17 +196,17 @@
             const caseNumber = `CASO-${String(currentCount).padStart(3, '0')}`;
             
             let interacciones = [];
-            if (newCase.observacion) {
+            if (cleanCase.observacion) {
               interacciones.push({
                 id: Date.now().toString(),
                 fecha: new Date().toISOString(),
-                texto: newCase.observacion,
+                texto: cleanCase.observacion,
                 rol: 'sistema' 
               });
             }
 
             await addDoc(casesRef, { 
-              ...newCase, 
+              ...cleanCase, 
               caseNumber, 
               fecha: new Date().toISOString().split('T')[0],
               interacciones: interacciones
@@ -446,6 +455,12 @@
                   onUpdate={async (updatedCase) => {
                     const docRef = doc(db, 'casos', updatedCase.id);
                     const { id, ...caseData } = updatedCase;
+                    
+                    // Limpiar undefined antes de actualizar detalle
+                    Object.keys(caseData).forEach(key => {
+                      if (caseData[key] === undefined) delete caseData[key];
+                    });
+
                     await updateDoc(docRef, caseData);
                   }}
                   onEdit={(id) => navigateTo('new', id)}
@@ -663,12 +678,24 @@
     // --- CASE LIST COMPONENT ---
     function CaseList({ cases, onSelect, title, emptyMsg }) {
       const [searchTerm, setSearchTerm] = useState('');
+      const [filterAsesor, setFilterAsesor] = useState('');
 
-      const filtered = cases.filter(c => 
-        c.nombre.toLowerCase().includes(searchTerm.toLowerCase()) || 
-        c.matricula.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (c.caseNumber && c.caseNumber.toLowerCase().includes(searchTerm.toLowerCase()))
-      );
+      // Calcular asesores únicos para el filtro dinámico de esta lista
+      const uniqueAdvisors = useMemo(() => {
+        const advSet = new Set(ADVISORS.map(a => a.name));
+        cases.forEach(c => {
+          if (c.asesor && c.asesor !== 'No asignado') advSet.add(c.asesor);
+        });
+        return Array.from(advSet).sort();
+      }, [cases]);
+
+      const filtered = cases.filter(c => {
+        const matchesSearch = c.nombre.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                              c.matricula.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                              (c.caseNumber && c.caseNumber.toLowerCase().includes(searchTerm.toLowerCase()));
+        const matchesAsesor = filterAsesor === '' || c.asesor === filterAsesor;
+        return matchesSearch && matchesAsesor;
+      });
 
       const getInitials = (name) => {
         return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
@@ -696,17 +723,29 @@
 
       return (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-fade-in">
-          <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-white">
-            <h3 className="font-bold text-lg text-slate-800">{title}</h3>
-            <div className="relative w-80">
-              <Search className="absolute left-3 top-2.5 text-slate-400" size={18} />
-              <input 
-                type="text"
-                placeholder="Buscar por nombre, matrícula..."
-                className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
+          <div className="p-5 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-center bg-white gap-4">
+            <h3 className="font-bold text-lg text-slate-800 w-full sm:w-auto">{title}</h3>
+            
+            <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+              <select 
+                className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                value={filterAsesor}
+                onChange={(e) => setFilterAsesor(e.target.value)}
+              >
+                <option value="">Todos los asesores</option>
+                {uniqueAdvisors.map(a => <option key={a} value={a}>{a}</option>)}
+              </select>
+
+              <div className="relative flex-1 sm:w-64">
+                <Search className="absolute left-3 top-2.5 text-slate-400" size={18} />
+                <input 
+                  type="text"
+                  placeholder="Buscar por nombre, matrícula..."
+                  className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
             </div>
           </div>
           <div className="overflow-x-auto">
@@ -829,7 +868,7 @@
             estado: caseToEdit.estado || 'Nuevo caso',
             subestado: caseToEdit.subestado || SUB_STATUSES[0],
             asesor: isPredefined ? caseToEdit.asesor : 'Otro',
-            asesorOtro: isPredefined ? '' : caseToEdit.asesor
+            asesorOtro: isPredefined ? '' : (caseToEdit.asesor || '')
           });
         }
       }, [caseToEdit]);
@@ -838,16 +877,25 @@
         e.preventDefault();
         const dataToSave = {...formData};
         if (dataToSave.estado === 'Baja definitiva') {
-          dataToSave.detalleBaja = dataToSave.detalleBaja === 'Otro' ? dataToSave.detalleBajaOtro : dataToSave.detalleBaja;
+          dataToSave.detalleBaja = dataToSave.detalleBaja === 'Otro' ? (dataToSave.detalleBajaOtro || '') : dataToSave.detalleBaja;
         } else {
           dataToSave.detalleBaja = null;
           dataToSave.tipoBaja = null;
         }
 
         if (dataToSave.asesor === 'Otro') {
-          dataToSave.asesor = dataToSave.asesorOtro.trim() || 'Sin especificar';
+          dataToSave.asesor = (dataToSave.asesorOtro || '').trim() || 'Sin especificar';
         }
         
+        // Limpiar campos temporales para no subirlos a Firebase y evitar undefined
+        delete dataToSave.asesorOtro;
+        delete dataToSave.detalleBajaOtro;
+
+        // Limpiar undefined a nivel de raiz
+        Object.keys(dataToSave).forEach(key => {
+          if (dataToSave[key] === undefined) delete dataToSave[key];
+        });
+
         onSave(dataToSave);
       };
 
@@ -903,7 +951,7 @@
                 {formData.asesor === 'Otro' && (
                   <input required type="text" placeholder="Nombre del nuevo asesor..." className="w-full sm:w-1/2 border border-slate-300 rounded-xl p-2.5 focus:ring-2 outline-none transition-shadow animate-fade-in"
                     style={{ '--tw-ring-color': careerInfo.hex }}
-                    value={formData.asesorOtro} onChange={e => setFormData({...formData, asesorOtro: e.target.value})} />
+                    value={formData.asesorOtro || ''} onChange={e => setFormData({...formData, asesorOtro: e.target.value})} />
                 )}
               </div>
             </div>
@@ -1009,7 +1057,7 @@
                 </div>
                 {formData.detalleBaja === 'Otro' && (
                   <input required type="text" placeholder="Escribe el motivo detallado aquí..." className="w-full border border-red-200 bg-white rounded-lg p-2.5 text-sm focus:ring-2 outline-none"
-                    value={formData.detalleBajaOtro} onChange={e => setFormData({...formData, detalleBajaOtro: e.target.value})} />
+                    value={formData.detalleBajaOtro || ''} onChange={e => setFormData({...formData, detalleBajaOtro: e.target.value})} />
                 )}
               </div>
             )}
@@ -1047,7 +1095,7 @@
                     <label className="block text-xs font-semibold text-slate-500 mb-1">Nombre de la Empresa</label>
                     <input required type="text" placeholder="Ej: Naranja X, Apex..." className="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 outline-none text-sm transition-shadow shadow-sm"
                       style={{ '--tw-ring-color': careerInfo.hex }}
-                      value={formData.nombreEmpresa} onChange={e => setFormData({...formData, nombreEmpresa: e.target.value})} />
+                      value={formData.nombreEmpresa || ''} onChange={e => setFormData({...formData, nombreEmpresa: e.target.value})} />
                   </div>
                 )}
               </div>
@@ -1060,7 +1108,7 @@
               <textarea required rows={3} className="w-full border border-slate-300 rounded-xl p-3 focus:ring-2 outline-none transition-shadow"
                 style={{ '--tw-ring-color': careerInfo.hex }}
                 placeholder="Detalla la situación particular..."
-                value={formData.observacion} onChange={e => setFormData({...formData, observacion: e.target.value})}></textarea>
+                value={formData.observacion || ''} onChange={e => setFormData({...formData, observacion: e.target.value})}></textarea>
               <p className="text-xs text-slate-500 mt-2">* Nota: Luego podrás añadir un historial detallado paso a paso desde el panel del caso.</p>
             </div>
 
