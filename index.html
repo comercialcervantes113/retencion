@@ -1164,6 +1164,30 @@
         historyEndRef.current?.scrollIntoView({ behavior: "smooth" });
       }, [caseData.interacciones]);
 
+      // --- GENERADOR DE MENSAJE DE WHATSAPP ---
+      const getWhatsAppUrl = () => {
+        const asesorName = caseData.asesor && caseData.asesor !== 'No asignado' ? caseData.asesor : 'Lucas';
+        const greeting = `Hola, ${caseData.nombre} ${caseData.matricula} ¿cómo estás? 👋\n\nTe escribe ${asesorName} del Departamento Comercial de Cervantes.\n\n`;
+        
+        let body = '';
+        if (caseData.motivo === 'Económico') {
+          body = `Vimos que tu solicitud de baja está relacionada con un motivo económico y queríamos saber si podemos ayudarte antes de avanzar con la baja definitiva.\n\nEn algunos casos contamos con ayudas económicas transitorias o alternativas de pago para que los estudiantes puedan continuar el cursado sin tener que dejar la carrera.\n\nSi te parece, lo vemos unos minutos y evaluamos si hay alguna opción que se adapte a tu situación actual.\n\nQuedo atento a lo que nos quieras comentar.`;
+        } else if (caseData.motivo === 'Académico') {
+          body = `Vimos tu solicitud de baja y el comentario sobre tu disconformidad con la institución. Antes de avanzar con la baja definitiva, me gustaría poder conocer un poco más tu experiencia para entender qué fue lo que ocurrió.\n\nTu devolución es muy importante para nosotros y, si existe alguna forma de mejorar la situación o acompañarte para que puedas continuar, con gusto lo evaluamos.\n\nQuedo atento a lo que nos quieras comentar.`;
+        } else {
+          body = `Vimos tu solicitud de baja y queríamos consultarte un poco más sobre el motivo, así podemos entender bien tu situación y ver si existe alguna alternativa para acompañarte.\n\n¿Tiene que ver con cuestiones laborales, falta de tiempo, temas de salud o algún otro motivo en particular?\n\nSi querés, contame un poco más y lo vemos juntos.`;
+        }
+        
+        const text = encodeURIComponent(greeting + body);
+        return `https://wa.me/${cleanPhone}?text=${text}`;
+      };
+
+      const handleWhatsAppClick = () => {
+        if (caseData.estado === 'Nuevo caso') {
+          onUpdate({ ...caseData, estado: 'En seguimiento' });
+        }
+      };
+
       const handleStatusClick = (s) => {
         if (s === 'Baja definitiva') {
           setShowBajaModal(true);
@@ -1477,9 +1501,10 @@
                   </div>
                   <div className="pt-2">
                     <a 
-                      href={`https://wa.me/${cleanPhone}`} 
+                      href={getWhatsAppUrl()} 
                       target="_blank" 
                       rel="noopener noreferrer"
+                      onClick={handleWhatsAppClick}
                       className="w-full flex items-center justify-center gap-2 bg-[#25D366] hover:bg-[#128C7E] text-white py-3 rounded-xl font-bold transition-colors shadow-sm"
                     >
                       <MessageCircle size={18} /> Contactar por WhatsApp
