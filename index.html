@@ -52,7 +52,7 @@
   <script type="text/babel" data-type="module">
     import React, { useState, useEffect, useMemo, useRef } from 'react';
     import { createRoot } from 'react-dom/client';
-    import { LayoutDashboard, Users, UserPlus, MessageCircle, Phone, Search, Filter, Save, ChevronRight, ArrowLeft, CheckCircle2, AlertCircle, XCircle, Clock, Edit2, Trash2, Archive, Database, Download, Send, User, MessageSquare, PlusCircle, AlertTriangle, Upload } from 'lucide-react';
+    import { LayoutDashboard, Users, UserPlus, MessageCircle, Phone, Search, Filter, Save, ChevronRight, ArrowLeft, CheckCircle2, AlertCircle, XCircle, Clock, Edit2, Trash2, Archive, Database, Download, Send, User, MessageSquare, PlusCircle, AlertTriangle, Upload, Menu } from 'lucide-react';
     
     // --- INTEGRACIÓN DE FIREBASE ---
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
@@ -130,6 +130,25 @@
       const [selectedCaseId, setSelectedCaseId] = useState(null);
       const [user, setUser] = useState(null);
       const [loading, setLoading] = useState(true);
+      const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+      // Historial de Navegación del Navegador
+      useEffect(() => {
+        const handlePopState = (e) => {
+          if (e.state && e.state.view) {
+            setCurrentView(e.state.view);
+            setSelectedCaseId(e.state.caseId);
+          } else {
+            setCurrentView('list');
+            setSelectedCaseId(null);
+          }
+        };
+
+        window.addEventListener('popstate', handlePopState);
+        window.history.replaceState({ view: 'list', caseId: null }, '', '#list');
+        
+        return () => window.removeEventListener('popstate', handlePopState);
+      }, []);
 
       useEffect(() => {
         const initAuth = async () => {
@@ -170,16 +189,27 @@
         return () => unsubscribe();
       }, [user]);
 
+      // Protección contra borrado cruzado (evita pantalla blanca)
+      useEffect(() => {
+        if (currentView === 'detail' && selectedCaseId && cases.length > 0) {
+          const caseExists = cases.some(c => c.id === selectedCaseId);
+          if (!caseExists) {
+            navigateTo('list');
+          }
+        }
+      }, [cases, currentView, selectedCaseId]);
+
       const navigateTo = (view, caseId = null) => {
+        window.history.pushState({ view, caseId }, '', `#${view}${caseId ? '/' + caseId : ''}`);
         setCurrentView(view);
         setSelectedCaseId(caseId);
+        setIsSidebarOpen(false); // Cierra menú móvil al navegar
       };
 
       const handleSaveCase = async (newCase) => {
         try {
           const cleanCase = { ...newCase };
           
-          // Limpiar valores undefined para evitar el error de Firebase updateDoc()
           Object.keys(cleanCase).forEach(key => {
             if (cleanCase[key] === undefined) {
               delete cleanCase[key];
@@ -211,8 +241,8 @@
               fecha: new Date().toISOString().split('T')[0],
               interacciones: interacciones
             });
+            navigateTo('list');
           }
-          navigateTo('list');
         } catch (error) {
           console.error("Error al guardar en Firebase:", error);
         }
@@ -221,19 +251,17 @@
       const handleDeleteCase = async (id) => {
         try {
           const deletedCase = cases.find(c => c.id === id);
-          if (!deletedCase) {
-             console.error("Caso no encontrado para eliminar:", id);
-             return;
-          }
-          const docRef = doc(db, 'casos', id);
-          await deleteDoc(docRef);
+          if (!deletedCase) return;
           
-          // Navegar de vuelta a la lista correspondiente en base al estado del caso eliminado
+          // Navegación preventiva para evitar pantallazo blanco
           if (deletedCase.estado === 'Retenido' || deletedCase.estado === 'Baja definitiva') {
             navigateTo('resolved');
           } else {
             navigateTo('list');
           }
+
+          const docRef = doc(db, 'casos', id);
+          await deleteDoc(docRef);
         } catch (error) {
           console.error("Error al eliminar de Firebase:", error);
         }
@@ -330,7 +358,7 @@
               console.error("Error importando:", err);
               alert("Hubo un error importando el Excel. Revisa el formato de las columnas.");
            }
-           e.target.value = null; // reset input
+           e.target.value = null; 
         };
         reader.readAsArrayBuffer(file);
       };
@@ -352,10 +380,21 @@
       const MAX_DB_USAGE = 5000;
       const dbUsagePercent = Math.min((cases.length / MAX_DB_USAGE) * 100, 100);
 
+      const selectedCase = cases.find(c => c.id === selectedCaseId);
+
       return (
-        <div className="flex h-screen w-full overflow-hidden">
+        <div className="flex h-screen w-full overflow-hidden bg-slate-50">
+          
+          {/* Overlay Móvil */}
+          {isSidebarOpen && (
+            <div 
+              className="fixed inset-0 bg-slate-900/50 z-40 md:hidden" 
+              onClick={() => setIsSidebarOpen(false)}
+            />
+          )}
+
           {/* Sidebar */}
-          <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col shadow-xl z-10 flex-shrink-0">
+          <aside className={`w-64 bg-slate-900 text-slate-300 flex flex-col shadow-xl z-50 fixed h-full transition-transform transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 md:relative`}>
             <div className="p-6 border-b border-slate-800/50">
               <div className="flex items-center gap-3">
                 <img src="https://i.ibb.co/4nqvFQGM/logo.png" alt="Logo Cervantes" className="h-10 object-contain drop-shadow-sm" />
@@ -426,49 +465,44 @@
           </aside>
 
           {/* Main Content */}
-          <main className="flex-1 overflow-y-auto relative bg-slate-50 w-full h-full custom-scrollbar">
-            <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 p-6 flex justify-between items-center sticky top-0 z-20 shadow-sm">
-              <h2 className="text-2xl font-semibold text-slate-800 capitalize">
-                {currentView === 'dashboard' && 'Panel de Control Global'}
-                {currentView === 'list' && 'Directorio de Casos Activos'}
-                {currentView === 'resolved' && 'Historial de Casos Resueltos'}
-                {currentView === 'new' && (selectedCaseId ? 'Editar Caso' : 'Registrar Nuevo Caso')}
-                {currentView === 'detail' && 'Detalle y Seguimiento del Caso'}
-              </h2>
+          <main className="flex-1 overflow-y-auto relative w-full h-full custom-scrollbar">
+            <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 p-4 md:p-6 flex items-center justify-between sticky top-0 z-20 shadow-sm">
+              <div className="flex items-center gap-3">
+                <button 
+                  className="md:hidden p-2 text-slate-600 hover:bg-slate-100 rounded-lg"
+                  onClick={() => setIsSidebarOpen(true)}
+                >
+                  <Menu size={24} />
+                </button>
+                <h2 className="text-xl md:text-2xl font-semibold text-slate-800 capitalize truncate">
+                  {currentView === 'dashboard' && 'Panel de Control Global'}
+                  {currentView === 'list' && 'Directorio de Casos Activos'}
+                  {currentView === 'resolved' && 'Historial de Casos Resueltos'}
+                  {currentView === 'new' && 'Registrar Nuevo Caso'}
+                  {currentView === 'detail' && 'Detalle y Seguimiento del Caso'}
+                </h2>
+              </div>
             </header>
 
-            <div className="p-8 relative z-10">
+            <div className="p-4 md:p-8 relative z-10">
               {currentView === 'dashboard' && <Dashboard cases={cases} />}
               {currentView === 'list' && <CaseList cases={activeCases} onSelect={(id) => navigateTo('detail', id)} title="Casos Activos (En Gestión)" emptyMsg="No hay casos activos. Todos los registros están resueltos o no hay datos." />}
               {currentView === 'resolved' && <CaseList cases={resolvedCases} onSelect={(id) => navigateTo('detail', id)} title="Casos Cerrados (Retenidos y Bajas)" emptyMsg="Aún no hay casos resueltos." />}
               {currentView === 'new' && (
                 <CaseForm 
                   cases={cases}
-                  caseToEdit={selectedCaseId ? cases.find(c => c.id === selectedCaseId) : null} 
                   onSave={handleSaveCase} 
                   onCancel={() => navigateTo('list')} 
                 />
               )}
-              {currentView === 'detail' && (
+              {currentView === 'detail' && selectedCase && (
                 <CaseDetail 
-                  caseData={cases.find(c => c.id === selectedCaseId)} 
+                  caseData={selectedCase} 
                   onBack={() => {
-                    const c = cases.find(c => c.id === selectedCaseId);
-                    if (c && (c.estado === 'Retenido' || c.estado === 'Baja definitiva')) navigateTo('resolved');
+                    if (selectedCase.estado === 'Retenido' || selectedCase.estado === 'Baja definitiva') navigateTo('resolved');
                     else navigateTo('list');
                   }} 
-                  onUpdate={async (updatedCase) => {
-                    const docRef = doc(db, 'casos', updatedCase.id);
-                    const { id, ...caseData } = updatedCase;
-                    
-                    // Limpiar undefined antes de actualizar detalle
-                    Object.keys(caseData).forEach(key => {
-                      if (caseData[key] === undefined) delete caseData[key];
-                    });
-
-                    await updateDoc(docRef, caseData);
-                  }}
-                  onEdit={(id) => navigateTo('new', id)}
+                  onUpdate={handleSaveCase}
                   onDelete={handleDeleteCase}
                 />
               )}
@@ -489,7 +523,6 @@
       const [filterAsesor, setFilterAsesor] = useState('');
       const [includeInProgress, setIncludeInProgress] = useState(true);
 
-      // Calcular asesores únicos para el filtro dinámico
       const uniqueAdvisors = useMemo(() => {
         const advSet = new Set(ADVISORS.map(a => a.name));
         cases.forEach(c => {
@@ -541,32 +574,32 @@
               <Filter className="text-indigo-600" size={20} />
               <span className="font-semibold text-slate-700">Filtros (Globales):</span>
             </div>
-            <div className="flex flex-wrap gap-3">
-              <select className="flex-1 min-w-[140px] bg-white/60 backdrop-blur-sm border border-white/50 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium" value={filterAsesor} onChange={e => setFilterAsesor(e.target.value)}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+              <select className="bg-white/60 backdrop-blur-sm border border-white/50 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium" value={filterAsesor} onChange={e => setFilterAsesor(e.target.value)}>
                 <option value="">Todos los Asesores</option>
                 {uniqueAdvisors.map(a => <option key={a} value={a}>{a}</option>)}
               </select>
-              <select className="flex-1 min-w-[140px] bg-white/60 backdrop-blur-sm border border-white/50 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium" value={filterCareer} onChange={e => setFilterCareer(e.target.value)}>
+              <select className="bg-white/60 backdrop-blur-sm border border-white/50 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium" value={filterCareer} onChange={e => setFilterCareer(e.target.value)}>
                 <option value="">Todas las Carreras</option>
                 {CAREERS.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
               </select>
-              <select className="flex-1 min-w-[140px] bg-white/60 backdrop-blur-sm border border-white/50 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium" value={filterModalidad} onChange={e => setFilterModalidad(e.target.value)}>
+              <select className="bg-white/60 backdrop-blur-sm border border-white/50 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium" value={filterModalidad} onChange={e => setFilterModalidad(e.target.value)}>
                 <option value="">Todas las Modalidades</option>
                 {ALL_MODALITIES.map(m => <option key={m} value={m}>{m}</option>)}
               </select>
-              <select className="flex-1 min-w-[140px] bg-white/60 backdrop-blur-sm border border-white/50 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium" value={filterNivel} onChange={e => setFilterNivel(e.target.value)}>
+              <select className="bg-white/60 backdrop-blur-sm border border-white/50 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium" value={filterNivel} onChange={e => setFilterNivel(e.target.value)}>
                 <option value="">Todos los Niveles</option>
                 {NIVELES_CASO.map(n => <option key={n} value={n.split('—')[0].trim()}>{n.split('—')[0].trim()}</option>)}
               </select>
-              <select className="flex-1 min-w-[140px] bg-white/60 backdrop-blur-sm border border-white/50 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium" value={filterReason} onChange={e => setFilterReason(e.target.value)}>
+              <select className="bg-white/60 backdrop-blur-sm border border-white/50 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium" value={filterReason} onChange={e => setFilterReason(e.target.value)}>
                 <option value="">Todos los Motivos</option>
                 {REASONS.map(r => <option key={r} value={r}>{r}</option>)}
               </select>
-              <select className="flex-1 min-w-[140px] bg-white/60 backdrop-blur-sm border border-white/50 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+              <select className="bg-white/60 backdrop-blur-sm border border-white/50 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
                 <option value="">Todos los Estados</option>
                 {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
-              <select className="flex-1 min-w-[140px] bg-white/60 backdrop-blur-sm border border-white/50 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium" value={filterSubstatus} onChange={e => setFilterSubstatus(e.target.value)}>
+              <select className="bg-white/60 backdrop-blur-sm border border-white/50 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium" value={filterSubstatus} onChange={e => setFilterSubstatus(e.target.value)}>
                 <option value="">Todos los Subestados</option>
                 {SUB_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
@@ -610,7 +643,7 @@
           <div className={`grid grid-cols-1 ${dropped > 0 ? 'lg:grid-cols-2' : ''} gap-6`}>
             {/* Gráfico de Barras Principal */}
             <div className="bg-white/60 backdrop-blur-md p-8 rounded-3xl shadow-lg border border-white/80">
-              <div className="flex justify-between items-center mb-8">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
                 <h3 className="font-bold text-slate-800 text-lg">Distribución de Resultados Globales</h3>
                 <label className="flex items-center gap-2 text-sm font-medium text-slate-600 cursor-pointer bg-white/50 px-3 py-1.5 rounded-lg border border-white/80">
                   <input 
@@ -642,7 +675,7 @@
                 )}
               </div>
               
-              <div className="flex gap-6 mt-6 justify-center">
+              <div className="flex flex-wrap gap-4 mt-6 justify-center">
                 <div className="flex items-center gap-2 bg-emerald-50/80 px-4 py-2 rounded-xl border border-emerald-100 shadow-sm"><span className="w-4 h-4 rounded-full bg-gradient-to-r from-emerald-400 to-emerald-500 shadow-sm"></span> <span className="text-sm font-bold text-emerald-800">Retenidos</span></div>
                 {includeInProgress && (
                   <div className="flex items-center gap-2 bg-indigo-50/80 px-4 py-2 rounded-xl border border-indigo-100 shadow-sm"><span className="w-4 h-4 rounded-full bg-gradient-to-r from-indigo-300 to-indigo-400 shadow-sm"></span> <span className="text-sm font-bold text-indigo-800">En Gestión</span></div>
@@ -685,7 +718,6 @@
       const [searchTerm, setSearchTerm] = useState('');
       const [filterAsesor, setFilterAsesor] = useState('');
 
-      // Calcular asesores únicos para el filtro dinámico de esta lista
       const uniqueAdvisors = useMemo(() => {
         const advSet = new Set(ADVISORS.map(a => a.name));
         cases.forEach(c => {
@@ -729,13 +761,13 @@
       };
 
       return (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-fade-in">
-          <div className="p-5 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-center bg-white gap-4">
-            <h3 className="font-bold text-lg text-slate-800 w-full sm:w-auto">{title}</h3>
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-fade-in w-full">
+          <div className="p-4 md:p-5 border-b border-slate-100 flex flex-col xl:flex-row justify-between items-start xl:items-center bg-white gap-4">
+            <h3 className="font-bold text-lg text-slate-800 w-full xl:w-auto">{title}</h3>
             
-            <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+            <div className="flex flex-col sm:flex-row gap-3 w-full xl:w-auto">
               <select 
-                className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium w-full sm:w-auto"
                 value={filterAsesor}
                 onChange={(e) => setFilterAsesor(e.target.value)}
               >
@@ -743,28 +775,28 @@
                 {uniqueAdvisors.map(a => <option key={a} value={a}>{a}</option>)}
               </select>
 
-              <div className="relative flex-1 sm:w-64">
-                <Search className="absolute left-3 top-2.5 text-slate-400" size={18} />
+              <div className="relative w-full sm:w-72">
+                <Search className="absolute left-3 top-3 text-slate-400" size={18} />
                 <input 
                   type="text"
                   placeholder="Buscar nombre, matrícula, teléfono..."
-                  className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
             </div>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+          <div className="overflow-x-auto w-full">
+            <table className="w-full text-left border-collapse whitespace-nowrap min-w-[800px]">
               <thead>
                 <tr className="bg-slate-50/50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-100">
-                  <th className="p-5 font-semibold">Matrícula</th>
-                  <th className="p-5 font-semibold">Alumno</th>
-                  <th className="p-5 font-semibold">Carrera y Modalidad</th>
-                  <th className="p-5 font-semibold">Motivo y Nivel</th>
-                  <th className="p-5 font-semibold">Estado y Subestado</th>
-                  <th className="p-5 font-semibold text-right">Acciones</th>
+                  <th className="p-4 font-semibold">Matrícula</th>
+                  <th className="p-4 font-semibold">Alumno</th>
+                  <th className="p-4 font-semibold">Carrera y Modalidad</th>
+                  <th className="p-4 font-semibold">Motivo y Nivel</th>
+                  <th className="p-4 font-semibold">Estado y Subestado</th>
+                  <th className="p-4 font-semibold text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -775,10 +807,10 @@
                     const careerInfo = CAREERS.find(car => car.name === c.carrera) || CAREERS[0];
                     return (
                       <tr key={c.id} className="hover:bg-slate-50/80 transition-all cursor-pointer group" onClick={() => onSelect(c.id)}>
-                        <td className="p-5">
+                        <td className="p-4">
                           <div className="font-mono text-sm font-bold text-indigo-600 bg-indigo-50 inline-block px-2.5 py-1 rounded-md">{c.matricula}</div>
                         </td>
-                        <td className="p-5">
+                        <td className="p-4">
                           <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-inner flex-shrink-0" style={{ backgroundColor: careerInfo.hex }}>
                               {getInitials(c.nombre)}
@@ -792,7 +824,7 @@
                             </div>
                           </div>
                         </td>
-                        <td className="p-5">
+                        <td className="p-4">
                           <div className="flex flex-col items-start gap-1.5">
                             <span 
                               style={{ backgroundColor: careerInfo.hex + '1A', color: careerInfo.hex, borderColor: careerInfo.hex + '40' }}
@@ -804,7 +836,7 @@
                             <span className="text-xs text-slate-500 font-bold px-1">{c.modalidad || 'No especificada'}</span>
                           </div>
                         </td>
-                        <td className="p-5">
+                        <td className="p-4">
                           <div className="flex flex-col items-start gap-1.5">
                             <span className={`inline-flex px-3 py-1.5 rounded-lg text-xs font-bold border shadow-sm ${getMotivoStyle(c.motivo)}`}>
                               {c.motivo}
@@ -814,11 +846,11 @@
                             </span>
                           </div>
                         </td>
-                        <td className="p-5">
+                        <td className="p-4">
                           <div className="flex flex-col gap-1.5 items-start">
                             <StatusBadge status={c.estado} />
                             {c.estado === 'Baja definitiva' ? (
-                              <div className="mt-1.5 text-[10px] text-red-600 font-bold leading-tight bg-red-50 border border-red-200 px-2 py-0.5 rounded">
+                              <div className="mt-1.5 text-[10px] text-red-600 font-bold leading-tight bg-red-50 border border-red-200 px-2 py-0.5 rounded whitespace-normal">
                                 {c.tipoBaja || 'NO CONTINUA'} - {c.detalleBaja}
                               </div>
                             ) : (
@@ -828,7 +860,7 @@
                             )}
                           </div>
                         </td>
-                        <td className="p-5 text-right">
+                        <td className="p-4 text-right">
                           <button 
                             onClick={(e) => { e.stopPropagation(); onSelect(c.id); }}
                             className="p-2 text-slate-400 group-hover:text-indigo-600 group-hover:bg-indigo-50 rounded-xl transition-all inline-flex items-center gap-1 font-semibold text-sm"
@@ -859,26 +891,10 @@
     }
 
     // --- CASE FORM COMPONENT ---
-    function CaseForm({ caseToEdit = null, onSave, onCancel, cases = [] }) {
-      const [formData, setFormData] = useState(caseToEdit || {
+    function CaseForm({ onSave, onCancel, cases = [] }) {
+      const [formData, setFormData] = useState({
         matricula: '', nombre: '', telefono: '', carrera: CAREERS[0].name, modalidad: CAREERS[0].modalities[0], tipoAlumno: [], nivelCaso: NIVELES_CASO[0], estado: 'Nuevo caso', subestado: SUB_STATUSES[0], motivo: REASONS[0], empresaAmiga: false, nombreEmpresa: '', observacion: '', tipoBaja: 'NO CONTINUA', detalleBaja: BAJA_SUBCATEGORIES[0], detalleBajaOtro: '', asesor: ADVISORS[0].name, asesorOtro: ''
       });
-
-      useEffect(() => {
-        if (caseToEdit) {
-          const isPredefined = ADVISORS.some(a => a.name === caseToEdit.asesor);
-          setFormData({
-            ...caseToEdit,
-            tipoAlumno: caseToEdit.tipoAlumno || [],
-            nivelCaso: caseToEdit.nivelCaso || NIVELES_CASO[0],
-            tipoBaja: caseToEdit.tipoBaja || 'NO CONTINUA',
-            estado: caseToEdit.estado || 'Nuevo caso',
-            subestado: caseToEdit.subestado || SUB_STATUSES[0],
-            asesor: isPredefined ? caseToEdit.asesor : 'Otro',
-            asesorOtro: isPredefined ? '' : (caseToEdit.asesor || '')
-          });
-        }
-      }, [caseToEdit]);
 
       const handleSubmit = (e) => {
         e.preventDefault();
@@ -894,14 +910,8 @@
           dataToSave.asesor = (dataToSave.asesorOtro || '').trim() || 'Sin especificar';
         }
         
-        // Limpiar campos temporales para no subirlos a Firebase y evitar undefined
         delete dataToSave.asesorOtro;
         delete dataToSave.detalleBajaOtro;
-
-        // Limpiar undefined a nivel de raiz
-        Object.keys(dataToSave).forEach(key => {
-          if (dataToSave[key] === undefined) delete dataToSave[key];
-        });
 
         onSave(dataToSave);
       };
@@ -931,16 +941,16 @@
       
       return (
         <div 
-          className="max-w-3xl mx-auto bg-white rounded-2xl shadow-md border-t-4 p-8 transition-all duration-300 animate-fade-in"
+          className="max-w-3xl mx-auto bg-white rounded-2xl shadow-md border-t-4 p-5 md:p-8 transition-all duration-300 animate-fade-in"
           style={{ borderTopColor: careerInfo.hex }}
         >
           <div className="flex items-center justify-between mb-6 border-b pb-4 border-slate-100">
             <div className="flex items-center gap-3">
                <div className="p-2.5 rounded-xl" style={{ backgroundColor: careerInfo.hex + '20', color: careerInfo.hex }}>
-                 {caseToEdit ? <Edit2 size={24} /> : <UserPlus size={24} />}
+                 <UserPlus size={24} />
                </div>
                <h3 className="text-xl font-bold text-slate-800">
-                 {caseToEdit ? 'Editar Caso Existente' : 'Registrar Estudiante'}
+                 Registrar Estudiante
                </h3>
             </div>
           </div>
@@ -973,7 +983,7 @@
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-1">Matrícula</label>
                 {(() => {
-                  const isDuplicate = cases.some(c => c.matricula.trim() === formData.matricula.trim() && c.matricula.trim() !== '' && (!caseToEdit || c.id !== caseToEdit.id));
+                  const isDuplicate = cases.some(c => c.matricula.trim() === formData.matricula.trim() && c.matricula.trim() !== '');
                   return (
                     <>
                       <input required type="text" className={`w-full border rounded-xl p-2.5 focus:ring-2 outline-none transition-shadow ${isDuplicate ? 'border-red-400 bg-red-50' : 'border-slate-300'}`}
@@ -1120,12 +1130,12 @@
             </div>
 
             <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
-              <button type="button" onClick={onCancel} className="px-5 py-2.5 border border-slate-300 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition-colors">
+              <button type="button" onClick={onCancel} className="px-5 py-2.5 border border-slate-300 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition-colors w-full sm:w-auto">
                 Cancelar
               </button>
               <button 
                 type="submit" 
-                className="px-5 py-2.5 text-white font-bold rounded-xl flex items-center gap-2 transition-all hover:opacity-90 shadow-sm"
+                className="px-5 py-2.5 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-all hover:opacity-90 shadow-sm w-full sm:w-auto"
                 style={{ backgroundColor: careerInfo.hex }}
               >
                 <Save size={18} /> Guardar Caso
@@ -1137,13 +1147,12 @@
     }
 
     // --- CASE DETAIL COMPONENT ---
-    function CaseDetail({ caseData, onBack, onUpdate, onEdit, onDelete }) {
+    function CaseDetail({ caseData, onBack, onUpdate, onDelete }) {
+      const [localData, setLocalData] = useState(caseData);
+      
       const [showDeleteModal, setShowDeleteModal] = useState(false);
       const [showBajaModal, setShowBajaModal] = useState(false);
-      const [tipoBaja, setTipoBaja] = useState('NO CONTINUA');
-      const [bajaReason, setBajaReason] = useState(BAJA_SUBCATEGORIES[0]);
-      const [bajaOtro, setBajaOtro] = useState('');
-
+      
       const [newInteraction, setNewInteraction] = useState('');
       const [interactionType, setInteractionType] = useState('indagacion'); 
 
@@ -1152,6 +1161,14 @@
       const [deletingMsgId, setDeletingMsgId] = useState(null);
 
       const historyEndRef = useRef(null);
+
+      useEffect(() => {
+        if (caseData) setLocalData(caseData);
+      }, [caseData]);
+
+      useEffect(() => {
+        historyEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      }, [caseData?.interacciones]);
 
       if (!caseData) return null;
 
@@ -1167,9 +1184,41 @@
       const extraProofOffer = caseData.empresaAmiga ? 20 : 40;
       const totalProofDiscount = currentDiscount + extraProofOffer; 
 
-      useEffect(() => {
-        historyEndRef.current?.scrollIntoView({ behavior: "smooth" });
-      }, [caseData.interacciones]);
+      // --- INLINE EDITING HANDLERS ---
+      const handleBlur = (field, value) => {
+        if (caseData[field] !== value) {
+          onUpdate({ ...caseData, [field]: value });
+        }
+      };
+
+      const handleSelectChange = (field, value) => {
+        setLocalData({ ...localData, [field]: value });
+        onUpdate({ ...caseData, [field]: value });
+      };
+
+      const handleCareerChange = (newCareer) => {
+        const careerObj = CAREERS.find(c => c.name === newCareer);
+        let newModality = localData.modalidad;
+        if (!careerObj.modalities.includes(newModality)) {
+          newModality = careerObj.modalities[0];
+        }
+        setLocalData({ ...localData, carrera: newCareer, modalidad: newModality });
+        onUpdate({ ...caseData, carrera: newCareer, modalidad: newModality });
+      };
+
+      const handleStatusClick = (s) => {
+        if (s === 'Baja definitiva') {
+          setShowBajaModal(true);
+        } else {
+          onUpdate({ ...caseData, estado: s, detalleBaja: null, tipoBaja: null });
+        }
+      };
+
+      const confirmBajaDefinitiva = () => {
+        const finalReason = localData.detalleBaja === 'Otro' ? localData.detalleBajaOtro : localData.detalleBaja;
+        onUpdate({ ...caseData, estado: 'Baja definitiva', tipoBaja: localData.tipoBaja, detalleBaja: finalReason });
+        setShowBajaModal(false);
+      };
 
       // --- GENERADOR DE MENSAJE DE WHATSAPP ---
       const getWhatsAppUrl = () => {
@@ -1195,20 +1244,7 @@
         }
       };
 
-      const handleStatusClick = (s) => {
-        if (s === 'Baja definitiva') {
-          setShowBajaModal(true);
-        } else {
-          onUpdate({ ...caseData, estado: s, detalleBaja: null, tipoBaja: null });
-        }
-      };
-
-      const confirmBajaDefinitiva = () => {
-        const finalReason = bajaReason === 'Otro' ? bajaOtro : bajaReason;
-        onUpdate({ ...caseData, estado: 'Baja definitiva', tipoBaja: tipoBaja, detalleBaja: finalReason });
-        setShowBajaModal(false);
-      };
-
+      // --- HISTORIAL HANDLERS ---
       const handleAddInteraction = () => {
         if (!newInteraction.trim()) return;
         
@@ -1323,7 +1359,7 @@
       };
 
       return (
-        <div className="space-y-6 relative animate-fade-in">
+        <div className="space-y-6 relative animate-fade-in pb-10">
           
           {/* MODAL CONFIRMACIÓN ELIMINAR CASO */}
           {showDeleteModal && (
@@ -1334,7 +1370,7 @@
                 </div>
                 <h3 className="text-xl font-bold text-center text-slate-800 mb-2">¿Eliminar este caso?</h3>
                 <p className="text-center text-slate-500 font-medium mb-8">Esta acción es permanente y se borrará de Firebase.</p>
-                <div className="flex gap-3">
+                <div className="flex flex-col sm:flex-row gap-3">
                   <button onClick={() => setShowDeleteModal(false)} className="flex-1 py-3 px-4 font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors">
                     Cancelar
                   </button>
@@ -1359,8 +1395,8 @@
                 <div className="mb-6 text-left space-y-3">
                   <select 
                     className="w-full border border-slate-300 rounded-xl p-3 focus:ring-2 focus:ring-red-400 outline-none text-slate-700 bg-slate-50"
-                    value={tipoBaja} 
-                    onChange={e => setTipoBaja(e.target.value)}
+                    value={localData.tipoBaja || 'NO CONTINUA'} 
+                    onChange={e => setLocalData({...localData, tipoBaja: e.target.value})}
                   >
                     <option value="NO CONTINUA">NO CONTINUA</option>
                     <option value="NO INICIA">NO INICIA</option>
@@ -1368,33 +1404,33 @@
 
                   <select 
                     className="w-full border border-slate-300 rounded-xl p-3 focus:ring-2 focus:ring-red-400 outline-none text-slate-700 bg-slate-50"
-                    value={bajaReason} 
-                    onChange={e => setBajaReason(e.target.value)}
+                    value={localData.detalleBaja || BAJA_SUBCATEGORIES[0]} 
+                    onChange={e => setLocalData({...localData, detalleBaja: e.target.value})}
                   >
                     {BAJA_SUBCATEGORIES.map(b => <option key={b} value={b}>{b}</option>)}
                   </select>
                   
-                  {bajaReason === 'Otro' && (
+                  {localData.detalleBaja === 'Otro' && (
                     <div className="animate-fade-in">
                       <input 
                         type="text" 
                         placeholder="Escribe el motivo detallado..." 
                         className="w-full border border-slate-300 rounded-xl p-3 focus:ring-2 focus:ring-red-400 outline-none text-slate-700"
-                        value={bajaOtro} 
-                        onChange={e => setBajaOtro(e.target.value)}
+                        value={localData.detalleBajaOtro || ''} 
+                        onChange={e => setLocalData({...localData, detalleBajaOtro: e.target.value})}
                         autoFocus
                       />
                     </div>
                   )}
                 </div>
 
-                <div className="flex gap-3">
+                <div className="flex flex-col sm:flex-row gap-3">
                   <button onClick={() => setShowBajaModal(false)} className="flex-1 py-3 px-4 font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors">
                     Cancelar
                   </button>
                   <button 
                     onClick={confirmBajaDefinitiva} 
-                    disabled={bajaReason === 'Otro' && !bajaOtro.trim()}
+                    disabled={localData.detalleBaja === 'Otro' && !(localData.detalleBajaOtro || '').trim()}
                     className="flex-1 py-3 px-4 font-bold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors shadow-sm disabled:opacity-50"
                   >
                     Confirmar Baja
@@ -1405,41 +1441,52 @@
           )}
 
           {/* HEADER SECUNDARIO */}
-          <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+          <div className="flex flex-wrap gap-4 justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
             <button onClick={onBack} className="flex items-center gap-2 text-slate-500 hover:text-slate-800 transition-colors font-bold px-2 py-1">
               <ArrowLeft size={18} /> Volver a la lista
             </button>
-            <div className="flex gap-2">
-              <button 
-                onClick={() => onEdit(caseData.id)}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
-              >
-                <Edit2 size={16} /> Editar
-              </button>
+            <div className="flex gap-2 w-full sm:w-auto">
               <button 
                 onClick={() => setShowDeleteModal(true)}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-xl transition-colors"
+                className="w-full sm:w-auto flex justify-center items-center gap-2 px-4 py-2 text-sm font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-xl transition-colors"
               >
-                <Trash2 size={16} /> Borrar
+                <Trash2 size={16} /> Borrar Caso
               </button>
             </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             
-            {/* Columna Izquierda: Información del Estudiante y Estado */}
+            {/* Columna Izquierda: Información del Estudiante y Estado (EDITABLE INLINE) */}
             <div className="lg:col-span-1 space-y-6">
               
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 border-t-4" style={{ borderTopColor: careerInfo.hex }}>
-                <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <h3 className="text-2xl font-bold text-slate-800">{caseData.nombre}</h3>
-                    <p className="text-slate-500 font-medium">{caseData.caseNumber} • {caseData.matricula}</p>
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 md:p-6 border-t-4" style={{ borderTopColor: careerInfo.hex }}>
+                <div className="flex flex-col mb-4 gap-2">
+                  <div className="flex justify-between items-start gap-4">
+                    <div className="w-full">
+                      <input 
+                        type="text"
+                        value={localData.nombre}
+                        onChange={e => setLocalData({...localData, nombre: e.target.value})}
+                        onBlur={e => handleBlur('nombre', e.target.value)}
+                        className="text-xl md:text-2xl font-bold text-slate-800 bg-transparent w-full border-b border-transparent hover:border-slate-300 focus:border-indigo-500 outline-none transition-colors pb-1"
+                        placeholder="Nombre del alumno"
+                      />
+                      <input 
+                        type="text"
+                        value={localData.matricula}
+                        onChange={e => setLocalData({...localData, matricula: e.target.value})}
+                        onBlur={e => handleBlur('matricula', e.target.value)}
+                        className="text-sm font-medium text-slate-500 bg-transparent w-full border-b border-transparent hover:border-slate-300 focus:border-indigo-500 outline-none transition-colors"
+                        placeholder="Matrícula"
+                      />
+                    </div>
                   </div>
-                  <div className="flex flex-col items-end">
+                  
+                  <div className="flex flex-col items-start gap-2 mt-2">
                     <StatusBadge status={caseData.estado} />
                     {caseData.estado === 'Baja definitiva' && caseData.detalleBaja && (
-                      <span className="text-[10px] text-red-500 font-bold mt-1 text-right max-w-[120px] leading-tight">
+                      <span className="text-[10px] text-red-500 font-bold bg-red-50 px-2 py-1 rounded border border-red-100">
                         {caseData.tipoBaja || 'NO CONTINUA'} - {caseData.detalleBaja}
                       </span>
                     )}
@@ -1450,62 +1497,124 @@
 
                   <div>
                     <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Asesor Asignado</p>
-                    <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-bold border border-slate-200 shadow-sm ${getAsesorColor(caseData.asesor)}`}>
-                      <User size={14} /> {caseData.asesor || 'No asignado'}
-                    </span>
+                    <select 
+                      className={`w-full border rounded-lg p-2 text-sm font-bold outline-none focus:ring-2 shadow-sm ${getAsesorColor(localData.asesor)}`}
+                      value={localData.asesor || ''} 
+                      onChange={e => handleSelectChange('asesor', e.target.value)}
+                    >
+                      {ADVISORS.map(a => <option key={a.name} value={a.name}>{a.name}</option>)}
+                    </select>
                   </div>
                   
-                  {caseData.tipoAlumno && caseData.tipoAlumno.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mb-2">
-                      {caseData.tipoAlumno.map(tipo => (
-                        <span key={tipo} className="px-2.5 py-1 bg-slate-100 text-slate-600 text-[10px] font-bold uppercase tracking-wider rounded border border-slate-200">
-                          {tipo}
-                        </span>
-                      ))}
+                  <div>
+                    <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Perfil del Alumno</p>
+                    <div className="flex flex-wrap gap-2">
+                      {STUDENT_TYPES.map(tipo => {
+                        const isChecked = localData.tipoAlumno?.includes(tipo);
+                        return (
+                          <label key={tipo} className={`cursor-pointer px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded border transition-colors ${isChecked ? 'bg-indigo-100 text-indigo-700 border-indigo-300' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
+                            <input 
+                              type="checkbox" 
+                              className="hidden"
+                              checked={isChecked}
+                              onChange={() => {
+                                const newTipos = isChecked 
+                                  ? localData.tipoAlumno.filter(t => t !== tipo)
+                                  : [...(localData.tipoAlumno || []), tipo];
+                                setLocalData({...localData, tipoAlumno: newTipos});
+                                onUpdate({...caseData, tipoAlumno: newTipos});
+                              }}
+                            />
+                            {tipo}
+                          </label>
+                        );
+                      })}
                     </div>
-                  )}
+                  </div>
 
-                  <div className="flex items-center gap-2">
-                     <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-bold border ${getNivelStyle(caseData.nivelCaso)}`}>
-                       <AlertTriangle size={12} className="mr-1" /> {(caseData.nivelCaso || '').split('—')[0] || 'Sin especificar'}
-                     </span>
+                  <div>
+                    <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Nivel de Gravedad</p>
+                    <select 
+                      className={`w-full border rounded-lg p-2 text-sm font-bold outline-none focus:ring-2 shadow-sm ${getNivelStyle(localData.nivelCaso)}`}
+                      value={localData.nivelCaso || NIVELES_CASO[0]} 
+                      onChange={e => handleSelectChange('nivelCaso', e.target.value)}
+                    >
+                      {NIVELES_CASO.map(n => <option key={n} value={n}>{n.split('—')[0].trim()}</option>)}
+                    </select>
                   </div>
 
                   <div>
                     <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Carrera</p>
-                    <span 
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-bold shadow-sm"
-                      style={{ backgroundColor: careerInfo.hex, color: '#FFFFFF' }}
+                    <select 
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-400"
+                      value={localData.carrera} 
+                      onChange={e => handleCareerChange(e.target.value)}
                     >
-                      {caseData.carrera}
-                    </span>
+                      {CAREERS.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                    </select>
                   </div>
+
                   <div>
                     <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Modalidad Actual</p>
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-bold bg-slate-100 text-slate-700 border border-slate-200">
-                      {caseData.modalidad || 'No especificada'}
-                    </span>
+                    <select 
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-400"
+                      value={localData.modalidad} 
+                      onChange={e => handleSelectChange('modalidad', e.target.value)}
+                    >
+                      {careerInfo.modalities.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
                   </div>
+
                   <div>
                     <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Motivo Principal</p>
-                    <div className="flex items-center gap-2 text-slate-700 bg-slate-100 px-3 py-2 rounded-xl font-bold border border-slate-200">
-                      <AlertCircle size={16} className={isTimeIssue ? "text-blue-500" : "text-amber-500"}/> {caseData.motivo}
-                    </div>
+                    <select 
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-400"
+                      value={localData.motivo} 
+                      onChange={e => handleSelectChange('motivo', e.target.value)}
+                    >
+                      {REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+                    </select>
                   </div>
-                  {caseData.empresaAmiga && (
-                    <div>
-                      <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Convenio Corporativo</p>
-                      <span className="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-bold bg-indigo-100 text-indigo-800 border border-indigo-200">
-                        Empresa Amiga: {caseData.nombreEmpresa || 'Sí'}
-                      </span>
-                    </div>
-                  )}
+
+                  <div className="flex flex-col gap-2 bg-indigo-50/50 p-3 rounded-lg border border-indigo-100">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        className="w-4 h-4 rounded border-gray-300"
+                        checked={localData.empresaAmiga}
+                        onChange={e => {
+                          const isChecked = e.target.checked;
+                          setLocalData({...localData, empresaAmiga: isChecked, nombreEmpresa: !isChecked ? '' : localData.nombreEmpresa});
+                          onUpdate({...caseData, empresaAmiga: isChecked, nombreEmpresa: !isChecked ? '' : localData.nombreEmpresa});
+                        }}
+                      />
+                      <span className="text-xs font-bold text-indigo-900">Convenio Corporativo (Empresa Amiga)</span>
+                    </label>
+                    {localData.empresaAmiga && (
+                      <input 
+                        type="text" 
+                        value={localData.nombreEmpresa} 
+                        onChange={e => setLocalData({...localData, nombreEmpresa: e.target.value})}
+                        onBlur={e => handleBlur('nombreEmpresa', e.target.value)}
+                        placeholder="Nombre de la Empresa"
+                        className="w-full bg-white border border-indigo-200 rounded-lg p-2 text-sm text-indigo-900 outline-none focus:ring-2 focus:ring-indigo-400"
+                      />
+                    )}
+                  </div>
+
                   <div>
-                    <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Teléfono</p>
-                    <p className="text-slate-700 font-bold flex items-center gap-2">
-                      {caseData.telefono}
-                    </p>
+                    <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Teléfono Celular</p>
+                    <div className="flex gap-2">
+                      <input 
+                        type="text" 
+                        value={localData.telefono} 
+                        onChange={e => setLocalData({...localData, telefono: e.target.value})}
+                        onBlur={e => handleBlur('telefono', e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-400"
+                      />
+                    </div>
                   </div>
+                  
                   <div className="pt-2">
                     <a 
                       href={getWhatsAppUrl()} 
@@ -1562,7 +1671,7 @@
                   </h3>
                 </div>
                 
-                <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-5 bg-slate-50/50">
+                <div className="p-4 md:p-5 grid grid-cols-1 md:grid-cols-2 gap-5 bg-slate-50/50">
                   
                   {/* Estrategia Económica */}
                   <div className={`rounded-xl border shadow-sm bg-white ${isTimeIssue && !isEconIssue ? 'border-slate-200' : 'border-emerald-200'}`}>
@@ -1628,7 +1737,7 @@
                 </div>
 
                 {/* Lista Historial */}
-                <div className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar bg-slate-50/30">
+                <div className="flex-1 overflow-y-auto p-4 md:p-5 space-y-4 custom-scrollbar bg-slate-50/30">
                   {interacciones.map((msg, index) => {
                     let d;
                     try {
@@ -1670,11 +1779,11 @@
                     
                     return (
                       <div key={msg.id || index} className={`relative p-4 rounded-xl border-l-4 shadow-sm border-y border-r ${boxStyle} animate-fade-in`}>
-                        <div className="flex justify-between items-start mb-2">
+                        <div className="flex flex-wrap gap-2 justify-between items-start mb-2">
                           <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${badgeStyle}`}>
                             {titleStr}
                           </span>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 ml-auto">
                             <span className="text-[10px] font-bold text-slate-400">
                               {d.toLocaleDateString()} - {d.getHours()}:{String(d.getMinutes()).padStart(2, '0')}
                             </span>
@@ -1725,11 +1834,11 @@
                 </div>
 
                 {/* Input Historial */}
-                <div className="p-4 bg-white border-t border-slate-100 rounded-b-2xl">
+                <div className="p-4 md:p-5 bg-white border-t border-slate-100 rounded-b-2xl">
                   <div className="flex flex-col gap-3">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <select 
-                        className="border border-slate-300 text-sm rounded-lg p-2 focus:ring-2 focus:ring-indigo-400 outline-none font-bold text-slate-600 bg-slate-50"
+                        className="border border-slate-300 text-sm rounded-lg p-2 focus:ring-2 focus:ring-indigo-400 outline-none font-bold text-slate-600 bg-slate-50 w-full sm:w-auto"
                         value={interactionType}
                         onChange={(e) => setInteractionType(e.target.value)}
                       >
@@ -1752,7 +1861,7 @@
                       <button 
                         onClick={handleAddInteraction}
                         disabled={!newInteraction.trim()}
-                        className="px-5 py-2.5 bg-indigo-600 text-white hover:bg-indigo-700 rounded-xl text-sm font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm"
+                        className="w-full sm:w-auto px-5 py-2.5 bg-indigo-600 text-white hover:bg-indigo-700 rounded-xl text-sm font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2 shadow-sm"
                       >
                         <PlusCircle size={16} /> Agregar al Historial
                       </button>
