@@ -132,6 +132,12 @@
       const [loading, setLoading] = useState(true);
       const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
+      // --- ESTADOS PARA EXPORTAR BAJAS ---
+      const [showExportBajasModal, setShowExportBajasModal] = useState(false);
+      const [bajasDateMode, setBajasDateMode] = useState('all'); // 'all' or 'range'
+      const [bajasStartDate, setBajasStartDate] = useState('');
+      const [bajasEndDate, setBajasEndDate] = useState('');
+
       // Historial de Navegación del Navegador
       useEffect(() => {
         const handlePopState = (e) => {
@@ -317,6 +323,68 @@
         window.XLSX.writeFile(workbook, `Reporte_Retencion_${new Date().toISOString().split('T')[0]}.xlsx`);
       };
 
+      const handleExportBajas = () => {
+        let filteredBajas = cases.filter(c => c.estado === 'Baja definitiva');
+        
+        if (bajasDateMode === 'range') {
+          if (!bajasStartDate || !bajasEndDate) {
+            alert('Por favor selecciona la fecha de inicio y de fin.');
+            return;
+          }
+          filteredBajas = filteredBajas.filter(c => {
+            return c.fecha >= bajasStartDate && c.fecha <= bajasEndDate;
+          });
+        }
+
+        if (filteredBajas.length === 0) {
+          alert('No se encontraron bajas definitivas en el rango seleccionado.');
+          return;
+        }
+
+        const dataToExport = filteredBajas.map(c => {
+          let historialTxt = '';
+          if (c.interacciones && c.interacciones.length > 0) {
+            historialTxt = c.interacciones.map(i => {
+              const d = new Date(i.fecha);
+              const dateStr = !isNaN(d) ? `${d.getDate()}/${d.getMonth()+1} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}` : '';
+              const rol = i.rol === 'indagacion' ? 'INDAGO EL PROBLEMA' : 
+                          i.rol === 'seguimiento' ? 'SEGUIMIENTO Y NEGOCIACIÓN' : 
+                          i.rol === 'cierre' ? 'CIERRE' : 'MOTIVO INICIAL';
+              return `[${dateStr}] ${rol}: ${i.texto}`;
+            }).join(' || ');
+          } else {
+            historialTxt = c.observacion || '';
+          }
+
+          const estadoExport = `Baja definitiva - ${c.tipoBaja || 'NO CONTINUA'} (${c.detalleBaja})`;
+
+          return {
+            'Nº Caso': c.caseNumber,
+            'Asesor': c.asesor || 'No asignado',
+            'Matrícula': c.matricula,
+            'Nombre': c.nombre,
+            'Teléfono': c.telefono,
+            'Carrera': c.carrera,
+            'Modalidad': c.modalidad || 'No especificada',
+            'Tipo Alumno': c.tipoAlumno && c.tipoAlumno.length > 0 ? c.tipoAlumno.join(', ') : 'No especificado',
+            'Nivel de Caso': c.nivelCaso || 'No especificado',
+            'Motivo Principal': c.motivo,
+            'Estado Final': estadoExport,
+            'Empresa Amiga': c.empresaAmiga ? 'Sí' : 'No',
+            'Nombre Empresa': c.nombreEmpresa || '-',
+            'Historial de Observaciones': historialTxt,
+            'Fecha de Registro': c.fecha
+          };
+        });
+
+        const worksheet = window.XLSX.utils.json_to_sheet(dataToExport);
+        const workbook = window.XLSX.utils.book_new();
+        window.XLSX.utils.book_append_sheet(workbook, worksheet, "Bajas");
+        window.XLSX.writeFile(workbook, `Reporte_Bajas_${new Date().toISOString().split('T')[0]}.xlsx`);
+        
+        setShowExportBajasModal(false);
+      };
+
       const handleImportExcel = (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -421,6 +489,53 @@
             />
           )}
 
+          {/* Modal Exportar Bajas */}
+          {showExportBajasModal && (
+            <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl animate-fade-in border border-slate-100">
+                <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mb-6 mx-auto border border-red-100">
+                  <Download size={32} />
+                </div>
+                <h3 className="text-xl font-bold text-center text-slate-800 mb-6">Exportar Bajas Definitivas</h3>
+                
+                <div className="space-y-4 mb-8">
+                  <div className="flex gap-4">
+                    <label className={`flex-1 flex items-center justify-center gap-2 cursor-pointer p-3 rounded-xl border transition-colors ${bajasDateMode === 'all' ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'}`}>
+                      <input type="radio" checked={bajasDateMode === 'all'} onChange={() => setBajasDateMode('all')} className="hidden" />
+                      <span className="text-sm font-bold">Todas las fechas</span>
+                    </label>
+                    <label className={`flex-1 flex items-center justify-center gap-2 cursor-pointer p-3 rounded-xl border transition-colors ${bajasDateMode === 'range' ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'}`}>
+                      <input type="radio" checked={bajasDateMode === 'range'} onChange={() => setBajasDateMode('range')} className="hidden" />
+                      <span className="text-sm font-bold">Rango específico</span>
+                    </label>
+                  </div>
+
+                  {bajasDateMode === 'range' && (
+                    <div className="grid grid-cols-2 gap-3 animate-fade-in pt-2">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 mb-1">Fecha Inicio</label>
+                        <input type="date" className="w-full border border-slate-300 bg-white rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-400 outline-none text-slate-700 font-medium" value={bajasStartDate} onChange={e => setBajasStartDate(e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 mb-1">Fecha Fin</label>
+                        <input type="date" className="w-full border border-slate-300 bg-white rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-400 outline-none text-slate-700 font-medium" value={bajasEndDate} onChange={e => setBajasEndDate(e.target.value)} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex gap-3">
+                  <button onClick={() => setShowExportBajasModal(false)} className="flex-1 py-3 px-4 font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors shadow-sm">
+                    Cancelar
+                  </button>
+                  <button onClick={handleExportBajas} className="flex-1 py-3 px-4 font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors shadow-sm">
+                    Descargar Bajas
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Sidebar */}
           <aside className={`w-64 bg-slate-900 text-slate-300 flex flex-col shadow-xl z-50 fixed h-full transition-transform transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 md:relative`}>
             <div className="p-6 border-b border-slate-800/50">
@@ -466,7 +581,13 @@
                   onClick={handleExportExcel}
                   className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg transition-colors bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600 hover:text-white border border-emerald-600/30"
                 >
-                  <Download size={18} /> Descargar Excel
+                  <Download size={18} /> Exportar Todos
+                </button>
+                <button 
+                  onClick={() => setShowExportBajasModal(true)}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg transition-colors bg-red-600/20 text-red-400 hover:bg-red-600 hover:text-white border border-red-600/30"
+                >
+                  <Download size={18} /> Exportar Bajas
                 </button>
                 <label className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg transition-colors bg-slate-800/50 text-slate-300 hover:bg-slate-700 hover:text-white border border-slate-700 cursor-pointer">
                   <Upload size={18} /> Importar Excel
