@@ -203,7 +203,7 @@
         window.history.pushState({ view, caseId }, '', `#${view}${caseId ? '/' + caseId : ''}`);
         setCurrentView(view);
         setSelectedCaseId(caseId);
-        setIsSidebarOpen(false); // Cierra menú móvil al navegar
+        setIsSidebarOpen(false); 
       };
 
       const handleSaveCase = async (newCase) => {
@@ -235,13 +235,16 @@
               });
             }
 
-            await addDoc(casesRef, { 
+            const docData = { 
               ...cleanCase, 
               caseNumber, 
               fecha: new Date().toISOString().split('T')[0],
               interacciones: interacciones
-            });
-            navigateTo('list');
+            };
+            
+            const docRef = await addDoc(casesRef, docData);
+            // Navegar directamente al detalle del caso recién creado
+            navigateTo('detail', docRef.id);
           }
         } catch (error) {
           console.error("Error al guardar en Firebase:", error);
@@ -328,15 +331,33 @@
 
               const casesRef = collection(db, 'casos');
               let count = cases.length;
+              let importedCount = 0;
+              let skippedCount = 0;
+              
+              // Set de matrículas existentes para no duplicar en la importación
+              const existingMatriculas = new Set(cases.map(c => String(c.matricula || '').trim()).filter(m => m !== ''));
               
               for(let row of json) {
+                  const mat = String(row['Matrícula'] || '').trim();
+                  
+                  // Saltar si ya existe la matrícula
+                  if (mat && existingMatriculas.has(mat)) {
+                      skippedCount++;
+                      continue;
+                  }
+                  
+                  // Registrar en el set para evitar duplicados en el mismo archivo excel
+                  if (mat) {
+                      existingMatriculas.add(mat);
+                  }
+
                   count++;
                   const caseNumber = row['Nº Caso'] || `CASO-${String(count).padStart(3, '0')}`;
                   
                   const newCase = {
                       caseNumber: caseNumber,
                       asesor: row['Asesor'] || ADVISORS[0].name,
-                      matricula: String(row['Matrícula'] || ''),
+                      matricula: mat,
                       nombre: row['Nombre'] || 'Alumno Importado',
                       telefono: String(row['Teléfono'] || ''),
                       carrera: row['Carrera'] || CAREERS[0].name,
@@ -352,8 +373,15 @@
                       tipoAlumno: []
                   }
                   await addDoc(casesRef, newCase);
+                  importedCount++;
               }
-              alert(`¡Se importaron ${json.length} casos exitosamente!`);
+              
+              let alertMsg = `¡Se importaron ${importedCount} casos exitosamente!`;
+              if (skippedCount > 0) {
+                 alertMsg += `\nSe omitieron ${skippedCount} casos porque la matrícula ya existía en el sistema.`;
+              }
+              alert(alertMsg);
+
            } catch(err) {
               console.error("Error importando:", err);
               alert("Hubo un error importando el Excel. Revisa el formato de las columnas.");
@@ -486,13 +514,14 @@
 
             <div className="p-4 md:p-8 relative z-10">
               {currentView === 'dashboard' && <Dashboard cases={cases} />}
-              {currentView === 'list' && <CaseList cases={activeCases} onSelect={(id) => navigateTo('detail', id)} title="Casos Activos (En Gestión)" emptyMsg="No hay casos activos. Todos los registros están resueltos o no hay datos." />}
-              {currentView === 'resolved' && <CaseList cases={resolvedCases} onSelect={(id) => navigateTo('detail', id)} title="Casos Cerrados (Retenidos y Bajas)" emptyMsg="Aún no hay casos resueltos." />}
+              {currentView === 'list' && <CaseList cases={activeCases} allCases={cases} onSelect={(id) => navigateTo('detail', id)} title="Casos Activos (En Gestión)" emptyMsg="No hay casos activos. Todos los registros están resueltos o no hay datos." />}
+              {currentView === 'resolved' && <CaseList cases={resolvedCases} allCases={cases} onSelect={(id) => navigateTo('detail', id)} title="Casos Cerrados (Retenidos y Bajas)" emptyMsg="Aún no hay casos resueltos." />}
               {currentView === 'new' && (
                 <CaseForm 
                   cases={cases}
                   onSave={handleSaveCase} 
                   onCancel={() => navigateTo('list')} 
+                  onOpenCase={(id) => navigateTo('detail', id)}
                 />
               )}
               {currentView === 'detail' && selectedCase && (
@@ -502,7 +531,16 @@
                     if (selectedCase.estado === 'Retenido' || selectedCase.estado === 'Baja definitiva') navigateTo('resolved');
                     else navigateTo('list');
                   }} 
-                  onUpdate={handleSaveCase}
+                  onUpdate={async (updatedCase) => {
+                    const docRef = doc(db, 'casos', updatedCase.id);
+                    const { id, ...caseData } = updatedCase;
+                    
+                    Object.keys(caseData).forEach(key => {
+                      if (caseData[key] === undefined) delete caseData[key];
+                    });
+
+                    await updateDoc(docRef, caseData);
+                  }}
                   onDelete={handleDeleteCase}
                 />
               )}
@@ -528,7 +566,7 @@
         cases.forEach(c => {
           if (c.asesor) advSet.add(c.asesor);
         });
-        return Array.from(advSet);
+        return Array.from(advSet).sort();
       }, [cases]);
 
       const filteredCases = useMemo(() => {
@@ -714,20 +752,24 @@
     }
 
     // --- CASE LIST COMPONENT ---
-    function CaseList({ cases, onSelect, title, emptyMsg }) {
+    function CaseList({ cases, allCases, onSelect, title, emptyMsg }) {
       const [searchTerm, setSearchTerm] = useState('');
       const [filterAsesor, setFilterAsesor] = useState('');
 
       const uniqueAdvisors = useMemo(() => {
         const advSet = new Set(ADVISORS.map(a => a.name));
-        cases.forEach(c => {
+        allCases.forEach(c => {
           if (c.asesor && c.asesor !== 'No asignado') advSet.add(c.asesor);
         });
         return Array.from(advSet).sort();
-      }, [cases]);
+      }, [allCases]);
 
-      const filtered = cases.filter(c => {
-        const term = searchTerm.toLowerCase();
+      // Búsqueda inteligente: si hay texto de búsqueda, busca en TODA la base de datos (allCases).
+      // Si no hay texto, respeta la vista de pestañas actual (cases = activos o resueltos).
+      const sourceCases = searchTerm.trim() !== '' ? allCases : cases;
+
+      const filtered = sourceCases.filter(c => {
+        const term = searchTerm.toLowerCase().trim();
         const matchesSearch = c.nombre.toLowerCase().includes(term) || 
                               c.matricula.toLowerCase().includes(term) ||
                               (c.telefono && c.telefono.includes(term)) ||
@@ -891,17 +933,25 @@
     }
 
     // --- CASE FORM COMPONENT ---
-    function CaseForm({ onSave, onCancel, cases = [] }) {
+    function CaseForm({ onSave, onCancel, cases = [], onOpenCase }) {
       const [formData, setFormData] = useState({
-        matricula: '', nombre: '', telefono: '', carrera: CAREERS[0].name, modalidad: CAREERS[0].modalities[0], tipoAlumno: [], nivelCaso: NIVELES_CASO[0], estado: 'Nuevo caso', subestado: SUB_STATUSES[0], motivo: REASONS[0], empresaAmiga: false, nombreEmpresa: '', observacion: '', tipoBaja: 'NO CONTINUA', detalleBaja: BAJA_SUBCATEGORIES[0], detalleBajaOtro: '', asesor: ADVISORS[0].name, asesorOtro: ''
+        matricula: '', nombre: '', telefono: '', carrera: CAREERS[0].name, modalidad: CAREERS[0].modalities[0], tipoAlumno: [], nivelCaso: NIVELES_CASO[0], estado: 'Nuevo caso', subestado: SUB_STATUSES[0], motivo: REASONS[0], empresaAmiga: false, nombreEmpresa: '', observacion: '', tipoBaja: 'NO CONTINUA', detalleBaja: BAJA_SUBCATEGORIES[0], asesor: ADVISORS[0].name
       });
+
+      // Lógica segura para determinar si es un duplicado verdadero (no vacío)
+      const inputMatricula = formData.matricula ? String(formData.matricula).trim() : '';
+      const duplicateCase = inputMatricula ? cases.find(c => {
+         const cMat = c.matricula ? String(c.matricula).trim() : '';
+         return cMat === inputMatricula;
+      }) : null;
+      const isDuplicate = !!duplicateCase;
 
       const handleSubmit = (e) => {
         e.preventDefault();
+        if (isDuplicate) return;
+
         const dataToSave = {...formData};
-        if (dataToSave.estado === 'Baja definitiva') {
-          dataToSave.detalleBaja = dataToSave.detalleBaja === 'Otro' ? (dataToSave.detalleBajaOtro || '') : dataToSave.detalleBaja;
-        } else {
+        if (dataToSave.estado !== 'Baja definitiva') {
           dataToSave.detalleBaja = null;
           dataToSave.tipoBaja = null;
         }
@@ -912,6 +962,11 @@
         
         delete dataToSave.asesorOtro;
         delete dataToSave.detalleBajaOtro;
+
+        // Limpiar undefined
+        Object.keys(dataToSave).forEach(key => {
+          if (dataToSave[key] === undefined) delete dataToSave[key];
+        });
 
         onSave(dataToSave);
       };
@@ -982,17 +1037,18 @@
               </div>
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-1">Matrícula</label>
-                {(() => {
-                  const isDuplicate = cases.some(c => c.matricula.trim() === formData.matricula.trim() && c.matricula.trim() !== '');
-                  return (
-                    <>
-                      <input required type="text" className={`w-full border rounded-xl p-2.5 focus:ring-2 outline-none transition-shadow ${isDuplicate ? 'border-red-400 bg-red-50' : 'border-slate-300'}`}
-                        style={{ '--tw-ring-color': careerInfo.hex }}
-                        value={formData.matricula} onChange={e => setFormData({...formData, matricula: e.target.value})} />
-                      {isDuplicate && <span className="text-red-500 text-xs font-bold mt-1 block flex items-center gap-1"><AlertTriangle size={12}/> Matrícula ya registrada en otro caso activo.</span>}
-                    </>
-                  );
-                })()}
+                <input required type="text" className={`w-full border rounded-xl p-2.5 focus:ring-2 outline-none transition-shadow ${isDuplicate ? 'border-red-400 bg-red-50 text-red-900' : 'border-slate-300'}`}
+                  style={{ '--tw-ring-color': careerInfo.hex }}
+                  value={formData.matricula} onChange={e => setFormData({...formData, matricula: e.target.value})} />
+                
+                {isDuplicate && (
+                  <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg animate-fade-in flex flex-col gap-2">
+                    <span className="text-red-600 text-xs font-bold flex items-center gap-1"><AlertTriangle size={14}/> Matrícula ya registrada.</span>
+                    <button type="button" onClick={() => onOpenCase(duplicateCase.id)} className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 self-start transition-colors bg-white px-2 py-1 rounded border border-indigo-200">
+                      Abrir registro original <ChevronRight size={12}/>
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1035,7 +1091,7 @@
                 <select className="w-full border border-slate-300 rounded-xl p-2.5 focus:ring-2 outline-none transition-shadow"
                   style={{ '--tw-ring-color': careerInfo.hex }}
                   value={formData.nivelCaso} onChange={e => setFormData({...formData, nivelCaso: e.target.value})}>
-                  {NIVELES_CASO.map(n => <option key={n} value={n}>{n}</option>)}
+                  {NIVELES_CASO.map(n => <option key={n} value={n.split('—')[0].trim()}>{n.split('—')[0].trim()}</option>)}
                 </select>
               </div>
               <div>
@@ -1135,8 +1191,9 @@
               </button>
               <button 
                 type="submit" 
-                className="px-5 py-2.5 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-all hover:opacity-90 shadow-sm w-full sm:w-auto"
-                style={{ backgroundColor: careerInfo.hex }}
+                disabled={isDuplicate}
+                className="px-5 py-2.5 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-all hover:opacity-90 shadow-sm w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ backgroundColor: isDuplicate ? '#94a3b8' : careerInfo.hex }}
               >
                 <Save size={18} /> Guardar Caso
               </button>
