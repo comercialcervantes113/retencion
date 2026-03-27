@@ -1422,7 +1422,7 @@
         if (s === 'Baja definitiva') {
           setShowBajaModal(true);
         } else if (s === 'Retenido') {
-          onUpdate({ ...caseData, estado: s, detalleBaja: null, tipoBaja: null, fechaResolucion: new Date().toISOString().split('T')[0] });
+          onUpdate({ ...caseData, estado: s, detalleBaja: null, tipoBaja: null, fechaResolucion: localData.fechaResolucion || new Date().toISOString().split('T')[0] });
         } else {
           onUpdate({ ...caseData, estado: s, detalleBaja: null, tipoBaja: null, fechaResolucion: null });
         }
@@ -1430,7 +1430,7 @@
 
       const confirmBajaDefinitiva = () => {
         const finalReason = localData.detalleBaja === 'Otro' ? localData.detalleBajaOtro : localData.detalleBaja;
-        onUpdate({ ...caseData, estado: 'Baja definitiva', tipoBaja: localData.tipoBaja, detalleBaja: finalReason, fechaResolucion: new Date().toISOString().split('T')[0] });
+        onUpdate({ ...caseData, estado: 'Baja definitiva', tipoBaja: localData.tipoBaja, detalleBaja: finalReason, fechaResolucion: localData.fechaResolucion || new Date().toISOString().split('T')[0] });
         setShowBajaModal(false);
       };
 
@@ -1701,10 +1701,19 @@
                         {caseData.tipoBaja || 'NO CONTINUA'} - {caseData.detalleBaja}
                       </span>
                     )}
-                    <div className="mt-2 text-left md:text-right">
+                    <div className="mt-2 flex flex-col items-start md:items-end gap-1">
                       <p className="text-[10px] text-slate-400">Creado: {caseData.fecha?.split('-').reverse().join('/') || '-'}</p>
-                      {(caseData.estado === 'Retenido' || caseData.estado === 'Baja definitiva') && caseData.fechaResolucion && (
-                        <p className="text-[10px] font-bold text-slate-600">Resuelto: {caseData.fechaResolucion.split('-').reverse().join('/')}</p>
+                      {(caseData.estado === 'Retenido' || caseData.estado === 'Baja definitiva') && (
+                        <div className="flex items-center gap-1.5 bg-white/50 px-2 py-1 rounded border border-slate-200 shadow-sm mt-1">
+                          <span className="text-[10px] font-bold text-slate-600">Resuelto:</span>
+                          <input 
+                            type="date"
+                            value={localData.fechaResolucion || ''}
+                            onChange={(e) => setLocalData({...localData, fechaResolucion: e.target.value})}
+                            onBlur={(e) => handleBlur('fechaResolucion', e.target.value)}
+                            className="text-[10px] font-bold text-slate-800 bg-transparent outline-none cursor-pointer hover:text-indigo-600 transition-colors"
+                          />
+                        </div>
                       )}
                     </div>
                   </div>
