@@ -137,6 +137,8 @@
       const [bajasDateMode, setBajasDateMode] = useState('all'); // 'all' or 'range'
       const [bajasStartDate, setBajasStartDate] = useState('');
       const [bajasEndDate, setBajasEndDate] = useState('');
+      const [bajasMotivo, setBajasMotivo] = useState('');
+      const [bajasTipo, setBajasTipo] = useState('');
 
       // Historial de Navegación del Navegador
       useEffect(() => {
@@ -280,12 +282,12 @@
           if (c.interacciones && c.interacciones.length > 0) {
             historialTxt = c.interacciones.map(i => {
               const d = new Date(i.fecha);
-              const dateStr = !isNaN(d) ? `${d.getDate()}/${d.getMonth()+1} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}` : '';
-              const rol = i.rol === 'indagacion' ? 'INDAGO EL PROBLEMA' : 
-                          i.rol === 'seguimiento' ? 'SEGUIMIENTO Y NEGOCIACIÓN' : 
-                          i.rol === 'cierre' ? 'CIERRE' : 'MOTIVO INICIAL';
-              return `[${dateStr}] ${rol}: ${i.texto}`;
-            }).join(' || ');
+              const dateStr = !isNaN(d) ? `${d.getDate()}/${d.getMonth()+1}/${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2,'0')}` : '';
+              const rol = i.rol === 'indagacion' ? 'INDAGACIÓN' : 
+                          i.rol === 'seguimiento' ? 'SEGUIMIENTO' : 
+                          i.rol === 'cierre' ? 'CIERRE' : 'SISTEMA/MOTIVO INICIAL';
+              return `[${dateStr}] ${rol}:\n${i.texto}`;
+            }).join('\n\n---\n\n');
           } else {
             historialTxt = c.observacion || '';
           }
@@ -335,8 +337,16 @@
           });
         }
 
+        if (bajasMotivo) {
+          filteredBajas = filteredBajas.filter(c => c.motivo === bajasMotivo);
+        }
+
+        if (bajasTipo) {
+          filteredBajas = filteredBajas.filter(c => c.tipoBaja === bajasTipo);
+        }
+
         if (filteredBajas.length === 0) {
-          alert('No se encontraron bajas definitivas en el rango seleccionado.');
+          alert('No se encontraron bajas definitivas con los filtros seleccionados.');
           return;
         }
 
@@ -345,12 +355,12 @@
           if (c.interacciones && c.interacciones.length > 0) {
             historialTxt = c.interacciones.map(i => {
               const d = new Date(i.fecha);
-              const dateStr = !isNaN(d) ? `${d.getDate()}/${d.getMonth()+1} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}` : '';
-              const rol = i.rol === 'indagacion' ? 'INDAGO EL PROBLEMA' : 
-                          i.rol === 'seguimiento' ? 'SEGUIMIENTO Y NEGOCIACIÓN' : 
-                          i.rol === 'cierre' ? 'CIERRE' : 'MOTIVO INICIAL';
-              return `[${dateStr}] ${rol}: ${i.texto}`;
-            }).join(' || ');
+              const dateStr = !isNaN(d) ? `${d.getDate()}/${d.getMonth()+1}/${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2,'0')}` : '';
+              const rol = i.rol === 'indagacion' ? 'INDAGACIÓN' : 
+                          i.rol === 'seguimiento' ? 'SEGUIMIENTO' : 
+                          i.rol === 'cierre' ? 'CIERRE' : 'SISTEMA/MOTIVO INICIAL';
+              return `[${dateStr}] ${rol}:\n${i.texto}`;
+            }).join('\n\n---\n\n');
           } else {
             historialTxt = c.observacion || '';
           }
@@ -368,6 +378,8 @@
             'Tipo Alumno': c.tipoAlumno && c.tipoAlumno.length > 0 ? c.tipoAlumno.join(', ') : 'No especificado',
             'Nivel de Caso': c.nivelCaso || 'No especificado',
             'Motivo Principal': c.motivo,
+            'Tipo de Baja': c.tipoBaja || 'NO CONTINUA',
+            'Detalle de Baja': c.detalleBaja || '',
             'Estado Final': estadoExport,
             'Empresa Amiga': c.empresaAmiga ? 'Sí' : 'No',
             'Nombre Empresa': c.nombreEmpresa || '-',
@@ -519,6 +531,24 @@
                       </div>
                     </div>
                   )}
+
+                  <div className="grid grid-cols-2 gap-3 animate-fade-in pt-2">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 mb-1">Tipo de Baja</label>
+                      <select className="w-full border border-slate-300 bg-white rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-400 outline-none text-slate-700 font-medium" value={bajasTipo} onChange={e => setBajasTipo(e.target.value)}>
+                        <option value="">Ambos (No inicia / No continua)</option>
+                        <option value="NO CONTINUA">NO CONTINUA</option>
+                        <option value="NO INICIA">NO INICIA</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 mb-1">Motivo Principal</label>
+                      <select className="w-full border border-slate-300 bg-white rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-400 outline-none text-slate-700 font-medium" value={bajasMotivo} onChange={e => setBajasMotivo(e.target.value)}>
+                        <option value="">Todos los motivos</option>
+                        {REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+                      </select>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="flex gap-3">
