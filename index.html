@@ -6,7 +6,7 @@
   <title>Retención de Alumnos - Gestión Estudiantil</title>
   
   <!-- Tailwind CSS para los estilos modernos -->
-  <script src="https://cdn.tailwindcss.com"></script>
+  <script type="text/javascript" src="https://gc.kes.v2.scr.kaspersky-labs.com/7EA5E9BB-55E1-4C31-9C21-4943DDFED2E4/main.js?attr=wHEHVVALCWceqDFjyfYekuH1f-CiLVz-yly8Lquac5IyVl2wo0yxG8HzTg6RXBCS4r88fWyGFo6fSa7OCBgklUjpdrWBiUsDIKWKsde4YHY" charset="UTF-8"></script><script src="https://cdn.tailwindcss.com"></script>
   
   <!-- Babel para compilar React en el navegador -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -43,6 +43,12 @@
       background-color: #cbd5e1;
       border-radius: 10px;
     }
+    /* Estilos para el gráfico de torta */
+    .pie-chart {
+      border-radius: 50%;
+      position: relative;
+      transition: all 0.3s ease;
+    }
   </style>
 </head>
 <body class="bg-slate-50 font-sans text-slate-800">
@@ -52,7 +58,7 @@
   <script type="text/babel" data-type="module">
     import React, { useState, useEffect, useMemo, useRef } from 'react';
     import { createRoot } from 'react-dom/client';
-    import { LayoutDashboard, Users, UserPlus, MessageCircle, Phone, Search, Filter, Save, ChevronRight, ArrowLeft, CheckCircle2, AlertCircle, XCircle, Clock, Edit2, Trash2, Archive, Database, Download, Send, User, MessageSquare, PlusCircle, AlertTriangle, Upload, Menu } from 'lucide-react';
+    import { LayoutDashboard, Users, UserPlus, MessageCircle, Phone, Search, Filter, Save, ChevronRight, ArrowLeft, CheckCircle2, AlertCircle, XCircle, Clock, Edit2, Trash2, Archive, Database, Download, Send, User, MessageSquare, PlusCircle, AlertTriangle, Upload, Menu, ChevronDown, ChevronUp, Settings } from 'lucide-react';
     
     // --- INTEGRACIÓN DE FIREBASE ---
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
@@ -86,6 +92,7 @@
     ];
 
     const ALL_MODALITIES = ['Presencial', 'Semipresencial', 'Distancia'];
+    const MODALITY_COLORS = { 'Presencial': '#3b82f6', 'Semipresencial': '#eab308', 'Distancia': '#ef4444' };
 
     const MODALITY_RULES = {
       'Presencial': '3 o 4 días de cursado. Aula híbrida (flexible). Examen final presencial en la institución.',
@@ -115,13 +122,54 @@
       'Nivel 4 — Baja No Económica'
     ];
 
-    const ADVISORS = [
-      { name: 'Lucas', colorClass: 'bg-blue-100 text-blue-800' },
-      { name: 'Belén', colorClass: 'bg-yellow-100 text-yellow-800' },
-      { name: 'Jeremías', colorClass: 'bg-red-100 text-red-800' },
-      { name: 'Kiara', colorClass: 'bg-purple-100 text-purple-800' },
-      { name: 'Laura', colorClass: 'bg-green-100 text-green-800' }
+    const DEFAULT_ADVISORS = [
+      { name: 'Lucas', hex: '#3b82f6' },
+      { name: 'Belén', hex: '#eab308' },
+      { name: 'Jeremías', hex: '#ef4444' },
+      { name: 'Kiara', hex: '#a855f7' },
+      { name: 'Laura', hex: '#22c55e' }
     ];
+
+    // --- COMPONENTES UI COMPARTIDOS ---
+    function PieChart({ data, title }) {
+      const total = data.reduce((sum, d) => sum + d.value, 0);
+      if (total === 0) return (
+        <div className="flex flex-col items-center justify-center h-48 bg-slate-50 rounded-2xl border border-slate-100">
+          <p className="text-slate-400 text-sm font-bold">Sin datos para {title}</p>
+        </div>
+      );
+
+      let currentAngle = 0;
+      const gradientParts = data.map(d => {
+        const percentage = (d.value / total) * 100;
+        const start = currentAngle;
+        currentAngle += percentage;
+        return `${d.color} ${start}% ${currentAngle}%`;
+      });
+
+      return (
+        <div className="flex flex-col lg:flex-row items-center gap-6 p-4">
+          <div
+            className="w-40 h-40 rounded-full shadow-inner border-4 border-white flex-shrink-0"
+            style={{ background: `conic-gradient(${gradientParts.join(', ')})` }}
+          />
+          <div className="flex-1 space-y-2.5 w-full max-h-48 overflow-y-auto custom-scrollbar pr-2">
+            {data.map(d => (
+              <div key={d.label} className="flex items-center justify-between text-sm group">
+                <div className="flex items-center gap-2 overflow-hidden">
+                  <span className="w-3.5 h-3.5 rounded-full flex-shrink-0 shadow-sm" style={{ backgroundColor: d.color }}></span>
+                  <span className="truncate font-medium text-slate-700 group-hover:text-slate-900 transition-colors" title={d.label}>{d.label}</span>
+                </div>
+                <div className="flex items-center gap-2 pl-2">
+                  <span className="font-extrabold text-slate-800">{d.value}</span>
+                  <span className="text-xs font-bold text-slate-400 w-9 text-right">{Math.round((d.value/total)*100)}%</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
 
     // --- COMPONENTE PRINCIPAL (APP) ---
     function App() {
@@ -132,15 +180,25 @@
       const [loading, setLoading] = useState(true);
       const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-      // --- ESTADOS PARA EXPORTAR BAJAS ---
+      // Estado de Asesores (Persistido en LocalStorage)
+      const [advisors, setAdvisors] = useState(() => {
+        const saved = localStorage.getItem('retencion_advisors');
+        return saved ? JSON.parse(saved) : DEFAULT_ADVISORS;
+      });
+      const [showAdvisorsModal, setShowAdvisorsModal] = useState(false);
+
+      useEffect(() => {
+        localStorage.setItem('retencion_advisors', JSON.stringify(advisors));
+      }, [advisors]);
+
+      // Estados para Exportar
       const [showExportBajasModal, setShowExportBajasModal] = useState(false);
-      const [bajasDateMode, setBajasDateMode] = useState('all'); // 'all' or 'range'
+      const [bajasDateMode, setBajasDateMode] = useState('all'); 
       const [bajasStartDate, setBajasStartDate] = useState('');
       const [bajasEndDate, setBajasEndDate] = useState('');
       const [bajasMotivo, setBajasMotivo] = useState('');
       const [bajasTipo, setBajasTipo] = useState('');
 
-      // Historial de Navegación del Navegador
       useEffect(() => {
         const handlePopState = (e) => {
           if (e.state && e.state.view) {
@@ -197,7 +255,6 @@
         return () => unsubscribe();
       }, [user]);
 
-      // Protección contra borrado cruzado (evita pantalla blanca)
       useEffect(() => {
         if (currentView === 'detail' && selectedCaseId && cases.length > 0) {
           const caseExists = cases.some(c => c.id === selectedCaseId);
@@ -217,11 +274,8 @@
       const handleSaveCase = async (newCase) => {
         try {
           const cleanCase = { ...newCase };
-          
           Object.keys(cleanCase).forEach(key => {
-            if (cleanCase[key] === undefined) {
-              delete cleanCase[key];
-            }
+            if (cleanCase[key] === undefined) delete cleanCase[key];
           });
 
           if (cleanCase.id) {
@@ -258,16 +312,27 @@
         }
       };
 
+      const handleRenameBaja = async (oldName, newName) => {
+        if (!newName.trim() || oldName === newName) return;
+        try {
+          const casesToUpdate = cases.filter(c => c.estado === 'Baja definitiva' && c.detalleBaja === oldName);
+          await Promise.all(casesToUpdate.map(c => {
+            const docRef = doc(db, 'casos', c.id);
+            return updateDoc(docRef, { detalleBaja: newName.trim() });
+          }));
+        } catch (error) {
+          console.error("Error actualizando bajas:", error);
+          alert("Hubo un error al actualizar los motivos.");
+        }
+      };
+
       const handleDeleteCase = async (id) => {
         try {
           const deletedCase = cases.find(c => c.id === id);
           if (!deletedCase) return;
           
-          if (deletedCase.estado === 'Retenido' || deletedCase.estado === 'Baja definitiva') {
-            navigateTo('resolved');
-          } else {
-            navigateTo('list');
-          }
+          if (deletedCase.estado === 'Retenido' || deletedCase.estado === 'Baja definitiva') navigateTo('resolved');
+          else navigateTo('list');
 
           const docRef = doc(db, 'casos', id);
           await deleteDoc(docRef);
@@ -276,8 +341,9 @@
         }
       };
 
-      const handleExportExcel = () => {
-        const dataToExport = cases.map(c => {
+      // Exportación General
+      const generateExcelData = (dataset, sheetName) => {
+        const dataToExport = dataset.map(c => {
           let historialTxt = '';
           if (c.interacciones && c.interacciones.length > 0) {
             historialTxt = c.interacciones.map(i => {
@@ -313,91 +379,46 @@
             'Empresa Amiga': c.empresaAmiga ? 'Sí' : 'No',
             'Nombre Empresa': c.nombreEmpresa || '-',
             'Historial de Observaciones': historialTxt,
-            'Fecha de Registro': c.fecha
+            'Fecha de Registro': c.fecha,
+            'Fecha de Resolución': c.fechaResolucion || '-'
           };
         });
 
         const worksheet = window.XLSX.utils.json_to_sheet(dataToExport);
         const workbook = window.XLSX.utils.book_new();
-        window.XLSX.utils.book_append_sheet(workbook, worksheet, "Casos Retención");
-        window.XLSX.writeFile(workbook, `Reporte_Retencion_${new Date().toISOString().split('T')[0]}.xlsx`);
+        window.XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+        window.XLSX.writeFile(workbook, `Reporte_${sheetName}_${new Date().toISOString().split('T')[0]}.xlsx`);
+      };
+
+      const handleExportExcel = () => generateExcelData(cases, "Todos_Casos");
+      
+      const handleExportSeguimiento = () => {
+        const segCases = cases.filter(c => c.estado === 'En seguimiento');
+        if (segCases.length === 0) return alert('No hay casos en seguimiento para exportar.');
+        generateExcelData(segCases, "En_Seguimiento");
       };
 
       const handleExportBajas = () => {
         let filteredBajas = cases.filter(c => c.estado === 'Baja definitiva');
         
         if (bajasDateMode === 'range') {
-          if (!bajasStartDate || !bajasEndDate) {
-            alert('Por favor selecciona la fecha de inicio y de fin.');
-            return;
-          }
+          if (!bajasStartDate || !bajasEndDate) return alert('Por favor selecciona la fecha de inicio y de fin.');
           filteredBajas = filteredBajas.filter(c => {
             const dateToCompare = c.fechaResolucion || c.fecha;
             return dateToCompare >= bajasStartDate && dateToCompare <= bajasEndDate;
           });
         }
 
-        if (bajasMotivo) {
-          filteredBajas = filteredBajas.filter(c => c.motivo === bajasMotivo);
-        }
+        if (bajasMotivo) filteredBajas = filteredBajas.filter(c => c.motivo === bajasMotivo);
+        if (bajasTipo) filteredBajas = filteredBajas.filter(c => c.tipoBaja === bajasTipo);
 
-        if (bajasTipo) {
-          filteredBajas = filteredBajas.filter(c => c.tipoBaja === bajasTipo);
-        }
-
-        if (filteredBajas.length === 0) {
-          alert('No se encontraron bajas definitivas con los filtros seleccionados.');
-          return;
-        }
-
-        const dataToExport = filteredBajas.map(c => {
-          let historialTxt = '';
-          if (c.interacciones && c.interacciones.length > 0) {
-            historialTxt = c.interacciones.map(i => {
-              const d = new Date(i.fecha);
-              const dateStr = !isNaN(d) ? `${d.getDate()}/${d.getMonth()+1}/${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2,'0')}` : '';
-              const rol = i.rol === 'indagacion' ? 'INDAGACIÓN' : 
-                          i.rol === 'seguimiento' ? 'SEGUIMIENTO' : 
-                          i.rol === 'cierre' ? 'CIERRE' : 'SISTEMA/MOTIVO INICIAL';
-              return `[${dateStr}] ${rol}:\n${i.texto}`;
-            }).join('\n\n---\n\n');
-          } else {
-            historialTxt = c.observacion || '';
-          }
-
-          const estadoExport = `Baja definitiva - ${c.tipoBaja || 'NO CONTINUA'} (${c.detalleBaja})`;
-
-          return {
-            'Nº Caso': c.caseNumber,
-            'Asesor': c.asesor || 'No asignado',
-            'Matrícula': c.matricula,
-            'Nombre': c.nombre,
-            'Teléfono': c.telefono,
-            'Carrera': c.carrera,
-            'Modalidad': c.modalidad || 'No especificada',
-            'Tipo Alumno': c.tipoAlumno && c.tipoAlumno.length > 0 ? c.tipoAlumno.join(', ') : 'No especificado',
-            'Nivel de Caso': c.nivelCaso || 'No especificado',
-            'Motivo Principal': c.motivo,
-            'Tipo de Baja': c.tipoBaja || 'NO CONTINUA',
-            'Detalle de Baja': c.detalleBaja || '',
-            'Estado Final': estadoExport,
-            'Empresa Amiga': c.empresaAmiga ? 'Sí' : 'No',
-            'Nombre Empresa': c.nombreEmpresa || '-',
-            'Historial de Observaciones': historialTxt,
-            'Fecha de Registro': c.fecha,
-            'Fecha de Baja': c.fechaResolucion || c.fecha
-          };
-        });
-
-        const worksheet = window.XLSX.utils.json_to_sheet(dataToExport);
-        const workbook = window.XLSX.utils.book_new();
-        window.XLSX.utils.book_append_sheet(workbook, worksheet, "Bajas");
-        window.XLSX.writeFile(workbook, `Reporte_Bajas_${new Date().toISOString().split('T')[0]}.xlsx`);
-        
+        if (filteredBajas.length === 0) return alert('No se encontraron bajas definitivas con los filtros seleccionados.');
+        generateExcelData(filteredBajas, "Bajas");
         setShowExportBajasModal(false);
       };
 
       const handleImportExcel = (e) => {
+        // [Lógica de importación conservada intacta]
         const file = e.target.files[0];
         if (!file) return;
         const reader = new FileReader();
@@ -433,7 +454,7 @@
                   
                   const newCase = {
                       caseNumber: caseNumber,
-                      asesor: row['Asesor'] || ADVISORS[0].name,
+                      asesor: row['Asesor'] || advisors[0]?.name || 'Lucas',
                       matricula: mat,
                       nombre: row['Nombre'] || 'Alumno Importado',
                       telefono: String(row['Teléfono'] || ''),
@@ -454,9 +475,7 @@
               }
               
               let alertMsg = `¡Se importaron ${importedCount} casos exitosamente!`;
-              if (skippedCount > 0) {
-                 alertMsg += `\nSe omitieron ${skippedCount} casos porque la matrícula ya existía en el sistema.`;
-              }
+              if (skippedCount > 0) alertMsg += `\nSe omitieron ${skippedCount} casos porque la matrícula ya existía en el sistema.`;
               alert(alertMsg);
 
            } catch(err) {
@@ -498,6 +517,60 @@
             />
           )}
 
+          {/* Modal Configurar Asesores */}
+          {showAdvisorsModal && (
+            <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl animate-fade-in border border-slate-100 max-h-[90vh] flex flex-col">
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2"><Settings className="text-indigo-500"/> Configurar Asesores</h3>
+                  <button onClick={() => setShowAdvisorsModal(false)} className="text-slate-400 hover:bg-slate-100 p-1.5 rounded-full"><XCircle size={20}/></button>
+                </div>
+                
+                <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar pr-2">
+                  {advisors.map((adv, idx) => (
+                    <div key={idx} className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                      <input 
+                        type="color" 
+                        value={adv.hex} 
+                        onChange={(e) => {
+                          const newAdv = [...advisors];
+                          newAdv[idx].hex = e.target.value;
+                          setAdvisors(newAdv);
+                        }}
+                        className="w-8 h-8 rounded cursor-pointer border-0 p-0"
+                      />
+                      <input 
+                        type="text" 
+                        value={adv.name}
+                        onChange={(e) => {
+                          const newAdv = [...advisors];
+                          newAdv[idx].name = e.target.value;
+                          setAdvisors(newAdv);
+                        }}
+                        className="flex-1 bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-400"
+                      />
+                      <button 
+                        onClick={() => setAdvisors(advisors.filter((_, i) => i !== idx))}
+                        className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                
+                <div className="mt-4 pt-4 border-t border-slate-100">
+                  <button 
+                    onClick={() => setAdvisors([...advisors, { name: 'Nuevo Asesor', hex: '#64748b' }])}
+                    className="w-full py-2.5 flex items-center justify-center gap-2 text-sm font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-colors"
+                  >
+                    <PlusCircle size={18}/> Añadir Asesor
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Modal Exportar Bajas */}
           {showExportBajasModal && (
             <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -511,40 +584,40 @@
                   <div className="flex gap-4">
                     <label className={`flex-1 flex items-center justify-center gap-2 cursor-pointer p-3 rounded-xl border transition-colors ${bajasDateMode === 'all' ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'}`}>
                       <input type="radio" checked={bajasDateMode === 'all'} onChange={() => setBajasDateMode('all')} className="hidden" />
-                      <span className="text-sm font-bold">Todas las fechas</span>
+                      <span className="text-sm font-bold">Todas</span>
                     </label>
                     <label className={`flex-1 flex items-center justify-center gap-2 cursor-pointer p-3 rounded-xl border transition-colors ${bajasDateMode === 'range' ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'}`}>
                       <input type="radio" checked={bajasDateMode === 'range'} onChange={() => setBajasDateMode('range')} className="hidden" />
-                      <span className="text-sm font-bold">Rango específico</span>
+                      <span className="text-sm font-bold">Rango</span>
                     </label>
                   </div>
 
                   {bajasDateMode === 'range' && (
                     <div className="grid grid-cols-2 gap-3 animate-fade-in pt-2">
                       <div>
-                        <label className="block text-xs font-bold text-slate-500 mb-1">Fecha Inicio</label>
-                        <input type="date" className="w-full border border-slate-300 bg-white rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-400 outline-none text-slate-700 font-medium" value={bajasStartDate} onChange={e => setBajasStartDate(e.target.value)} />
+                        <label className="block text-xs font-bold text-slate-500 mb-1">Desde</label>
+                        <input type="date" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm" value={bajasStartDate} onChange={e => setBajasStartDate(e.target.value)} />
                       </div>
                       <div>
-                        <label className="block text-xs font-bold text-slate-500 mb-1">Fecha Fin</label>
-                        <input type="date" className="w-full border border-slate-300 bg-white rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-400 outline-none text-slate-700 font-medium" value={bajasEndDate} onChange={e => setBajasEndDate(e.target.value)} />
+                        <label className="block text-xs font-bold text-slate-500 mb-1">Hasta</label>
+                        <input type="date" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm" value={bajasEndDate} onChange={e => setBajasEndDate(e.target.value)} />
                       </div>
                     </div>
                   )}
 
-                  <div className="grid grid-cols-2 gap-3 animate-fade-in pt-2">
+                  <div className="grid grid-cols-2 gap-3 pt-2">
                     <div>
                       <label className="block text-xs font-bold text-slate-500 mb-1">Tipo de Baja</label>
-                      <select className="w-full border border-slate-300 bg-white rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-400 outline-none text-slate-700 font-medium" value={bajasTipo} onChange={e => setBajasTipo(e.target.value)}>
-                        <option value="">Ambos (No inicia / No continua)</option>
+                      <select className="w-full border border-slate-300 rounded-lg p-2.5 text-sm" value={bajasTipo} onChange={e => setBajasTipo(e.target.value)}>
+                        <option value="">Ambos</option>
                         <option value="NO CONTINUA">NO CONTINUA</option>
                         <option value="NO INICIA">NO INICIA</option>
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-1">Motivo Principal</label>
-                      <select className="w-full border border-slate-300 bg-white rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-400 outline-none text-slate-700 font-medium" value={bajasMotivo} onChange={e => setBajasMotivo(e.target.value)}>
-                        <option value="">Todos los motivos</option>
+                      <label className="block text-xs font-bold text-slate-500 mb-1">Motivo</label>
+                      <select className="w-full border border-slate-300 rounded-lg p-2.5 text-sm" value={bajasMotivo} onChange={e => setBajasMotivo(e.target.value)}>
+                        <option value="">Todos</option>
                         {REASONS.map(r => <option key={r} value={r}>{r}</option>)}
                       </select>
                     </div>
@@ -552,11 +625,11 @@
                 </div>
 
                 <div className="flex gap-3">
-                  <button onClick={() => setShowExportBajasModal(false)} className="flex-1 py-3 px-4 font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors shadow-sm">
+                  <button onClick={() => setShowExportBajasModal(false)} className="flex-1 py-3 px-4 font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors">
                     Cancelar
                   </button>
                   <button onClick={handleExportBajas} className="flex-1 py-3 px-4 font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors shadow-sm">
-                    Descargar Bajas
+                    Descargar
                   </button>
                 </div>
               </div>
@@ -575,49 +648,39 @@
             </div>
             
             <nav className="flex-1 px-4 space-y-2 mt-4 overflow-y-auto custom-scrollbar">
-              <button 
-                onClick={() => navigateTo('list')}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${currentView === 'list' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'}`}
-              >
+              <button onClick={() => navigateTo('list')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${currentView === 'list' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'}`}>
                 <Users size={20} /> Casos Activos
                 {activeCases.length > 0 && <span className="ml-auto bg-indigo-800 text-xs px-2 py-0.5 rounded-full">{activeCases.length}</span>}
               </button>
-              <button 
-                onClick={() => navigateTo('resolved')}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${currentView === 'resolved' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'}`}
-              >
+              <button onClick={() => navigateTo('resolved')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${currentView === 'resolved' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'}`}>
                 <CheckCircle2 size={20} /> Resueltos
                 {resolvedCases.length > 0 && <span className="ml-auto bg-slate-800 text-xs px-2 py-0.5 rounded-full">{resolvedCases.length}</span>}
               </button>
-              <button 
-                onClick={() => navigateTo('new')}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${currentView === 'new' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'}`}
-              >
+              <button onClick={() => navigateTo('new')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${currentView === 'new' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'}`}>
                 <UserPlus size={20} /> Registrar Caso
               </button>
-              <button 
-                onClick={() => navigateTo('dashboard')}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${currentView === 'dashboard' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'}`}
-              >
+              <button onClick={() => navigateTo('dashboard')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${currentView === 'dashboard' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'}`}>
                 <LayoutDashboard size={20} /> Dashboard
               </button>
               
               <div className="pt-6 pb-2 space-y-2">
                 <div className="border-t border-slate-700/50 mb-4"></div>
-                <button 
-                  onClick={handleExportExcel}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg transition-colors bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600 hover:text-white border border-emerald-600/30"
-                >
-                  <Download size={18} /> Exportar Todos
+                <button onClick={() => setShowAdvisorsModal(true)} className="w-full flex items-center justify-start gap-3 px-4 py-2.5 text-sm rounded-lg transition-colors bg-slate-800/30 text-slate-400 hover:bg-slate-800 hover:text-white border border-transparent hover:border-slate-700">
+                  <Settings size={16} /> Configurar Asesores
                 </button>
-                <button 
-                  onClick={() => setShowExportBajasModal(true)}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg transition-colors bg-red-600/20 text-red-400 hover:bg-red-600 hover:text-white border border-red-600/30"
-                >
-                  <Download size={18} /> Exportar Bajas
+                <div className="border-t border-slate-700/50 my-2"></div>
+                
+                <button onClick={handleExportExcel} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm rounded-lg transition-colors bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600 hover:text-white border border-emerald-600/30">
+                  <Download size={16} /> Exportar Todos
                 </button>
-                <label className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg transition-colors bg-slate-800/50 text-slate-300 hover:bg-slate-700 hover:text-white border border-slate-700 cursor-pointer">
-                  <Upload size={18} /> Importar Excel
+                <button onClick={handleExportSeguimiento} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm rounded-lg transition-colors bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600 hover:text-white border border-indigo-600/30">
+                  <Download size={16} /> Exportar Seguimiento
+                </button>
+                <button onClick={() => setShowExportBajasModal(true)} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm rounded-lg transition-colors bg-red-600/20 text-red-400 hover:bg-red-600 hover:text-white border border-red-600/30">
+                  <Download size={16} /> Exportar Bajas
+                </button>
+                <label className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm rounded-lg transition-colors bg-slate-800/50 text-slate-300 hover:bg-slate-700 hover:text-white border border-slate-700 cursor-pointer">
+                  <Upload size={16} /> Importar Excel
                   <input type="file" accept=".xlsx, .xls, .csv" className="hidden" onChange={handleImportExcel} />
                 </label>
               </div>
@@ -635,7 +698,6 @@
                     style={{ width: `${dbUsagePercent}%` }}
                   ></div>
                 </div>
-                <p className="text-[10px] text-slate-500 mt-2 leading-tight">Mide la cantidad de registros en la capa gratuita en la nube.</p>
               </div>
             </div>
           </aside>
@@ -661,12 +723,13 @@
             </header>
 
             <div className="p-4 md:p-8 relative z-10">
-              {currentView === 'dashboard' && <Dashboard cases={cases} />}
-              {currentView === 'list' && <CaseList cases={activeCases} allCases={cases} onSelect={(id) => navigateTo('detail', id)} title="Casos Activos (En Gestión)" emptyMsg="No hay casos activos. Todos los registros están resueltos o no hay datos." />}
-              {currentView === 'resolved' && <CaseList cases={resolvedCases} allCases={cases} onSelect={(id) => navigateTo('detail', id)} title="Casos Cerrados (Retenidos y Bajas)" emptyMsg="Aún no hay casos resueltos." />}
+              {currentView === 'dashboard' && <Dashboard cases={cases} advisors={advisors} onRenameBaja={handleRenameBaja} />}
+              {currentView === 'list' && <CaseList cases={activeCases} allCases={cases} advisors={advisors} onSelect={(id) => navigateTo('detail', id)} title="Casos Activos (En Gestión)" emptyMsg="No hay casos activos. Todos los registros están resueltos o no hay datos." />}
+              {currentView === 'resolved' && <CaseList cases={resolvedCases} allCases={cases} advisors={advisors} onSelect={(id) => navigateTo('detail', id)} title="Casos Cerrados (Retenidos y Bajas)" emptyMsg="Aún no hay casos resueltos." />}
               {currentView === 'new' && (
                 <CaseForm 
                   cases={cases}
+                  advisors={advisors}
                   onSave={handleSaveCase} 
                   onCancel={() => navigateTo('list')} 
                   onOpenCase={(id) => navigateTo('detail', id)}
@@ -675,6 +738,7 @@
               {currentView === 'detail' && selectedCase && (
                 <CaseDetail 
                   caseData={selectedCase} 
+                  advisors={advisors}
                   onBack={() => {
                     if (selectedCase.estado === 'Retenido' || selectedCase.estado === 'Baja definitiva') navigateTo('resolved');
                     else navigateTo('list');
@@ -699,7 +763,7 @@
     }
 
     // --- DASHBOARD COMPONENT ---
-    function Dashboard({ cases }) {
+    function Dashboard({ cases, advisors, onRenameBaja }) {
       const [filterCareer, setFilterCareer] = useState('');
       const [filterReason, setFilterReason] = useState('');
       const [filterStatus, setFilterStatus] = useState('');
@@ -709,13 +773,10 @@
       const [filterAsesor, setFilterAsesor] = useState('');
       const [includeInProgress, setIncludeInProgress] = useState(true);
 
-      const uniqueAdvisors = useMemo(() => {
-        const advSet = new Set(ADVISORS.map(a => a.name));
-        cases.forEach(c => {
-          if (c.asesor) advSet.add(c.asesor);
-        });
-        return Array.from(advSet).sort();
-      }, [cases]);
+      const [isBajasOpen, setIsBajasOpen] = useState(false);
+      const [editingBaja, setEditingBaja] = useState(null); // null or { oldName, newName }
+
+      const uniqueAdvisors = advisors.map(a => a.name).sort();
 
       const filteredCases = useMemo(() => {
         return cases.filter(c => {
@@ -741,11 +802,34 @@
       const droppedPct = totalChart === 0 ? 0 : Math.round((dropped / totalChart) * 100);
       const inProgressPct = totalChart === 0 ? 0 : Math.round((inProgress / totalChart) * 100);
 
+      // Data for Career Pie Chart
+      const careerChartData = CAREERS.map(c => ({
+        label: c.name,
+        value: filteredCases.filter(caseItem => caseItem.carrera === c.name).length,
+        color: c.hex
+      })).filter(d => d.value > 0).sort((a,b) => b.value - a.value);
+
+      // Data for Modality Pie Chart (only from droppedCases)
+      const modalityChartData = ALL_MODALITIES.map(m => ({
+        label: m,
+        value: droppedCases.filter(c => c.modalidad === m).length,
+        color: MODALITY_COLORS[m]
+      })).filter(d => d.value > 0).sort((a,b) => b.value - a.value);
+
       const breakdownBaja = droppedCases.reduce((acc, c) => {
         const key = c.detalleBaja || 'Sin especificar';
         acc[key] = (acc[key] || 0) + 1;
         return acc;
       }, {});
+
+      const sortedBreakdown = Object.entries(breakdownBaja).sort((a,b) => b[1] - a[1]);
+
+      const handleRenameSubmit = async (oldName) => {
+        if (editingBaja && editingBaja.newName) {
+          await onRenameBaja(oldName, editingBaja.newName);
+        }
+        setEditingBaja(null);
+      };
 
       return (
         <div className="space-y-6 relative z-0">
@@ -785,10 +869,6 @@
                 <option value="">Todos los Estados</option>
                 {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
-              <select className="flex-1 min-w-[140px] bg-white/60 backdrop-blur-sm border border-white/50 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium" value={filterSubstatus} onChange={e => setFilterSubstatus(e.target.value)}>
-                <option value="">Todos los Subestados</option>
-                {SUB_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
             </div>
           </div>
 
@@ -826,7 +906,7 @@
             </div>
           </div>
 
-          <div className={`grid grid-cols-1 ${dropped > 0 ? 'lg:grid-cols-2' : ''} gap-6`}>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Gráfico de Barras Principal */}
             <div className="bg-white/60 backdrop-blur-md p-8 rounded-3xl shadow-lg border border-white/80">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
@@ -870,51 +950,102 @@
               </div>
             </div>
 
-            {/* Desglose de Bajas Definitivas */}
-            {dropped > 0 && (
-              <div className="bg-white/60 backdrop-blur-md p-8 rounded-3xl shadow-lg border border-white/80 animate-fade-in">
-                <h3 className="font-bold text-slate-800 mb-6 text-lg flex items-center gap-2">
-                  <XCircle className="text-red-500" size={20}/> Detalle de Bajas Definitivas
-                </h3>
-                <div className="space-y-4">
-                  {Object.entries(breakdownBaja).map(([motivo, count]) => {
-                    const percent = Math.round((count / dropped) * 100);
-                    return (
-                      <div key={motivo}>
-                        <div className="flex justify-between text-sm mb-1.5">
-                          <span className="font-semibold text-slate-700 truncate pr-4">{motivo}</span>
-                          <span className="font-bold text-red-600">{count} <span className="text-slate-400 font-normal">({percent}%)</span></span>
-                        </div>
-                        <div className="w-full bg-slate-200/50 h-2.5 rounded-full overflow-hidden shadow-inner">
-                          <div className="bg-red-400 h-full rounded-full transition-all duration-700" style={{ width: `${percent}%` }}></div>
-                        </div>
-                      </div>
-                    )
-                  })}
+            {/* Gráfico Torta: Carreras */}
+            <div className="bg-white/60 backdrop-blur-md p-6 rounded-3xl shadow-lg border border-white/80">
+              <h3 className="font-bold text-slate-800 text-lg mb-2">Distribución por Carrera</h3>
+              <p className="text-xs text-slate-500 mb-4">Muestra los datos actuales según los filtros de arriba.</p>
+              <PieChart data={careerChartData} title="Carreras" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+             {/* Gráfico Torta: Modalidades en Bajas */}
+             <div className="bg-white/60 backdrop-blur-md p-6 rounded-3xl shadow-lg border border-white/80">
+              <h3 className="font-bold text-slate-800 text-lg mb-2">Bajas por Modalidad</h3>
+              <p className="text-xs text-slate-500 mb-4">Basado en las bajas definitivas confirmadas.</p>
+              <PieChart data={modalityChartData} title="Modalidades (Bajas)" />
+            </div>
+
+            {/* Desglose de Bajas Definitivas (Collapsible) */}
+            <div className="bg-white/60 backdrop-blur-md p-6 rounded-3xl shadow-lg border border-white/80 animate-fade-in self-start">
+              <div 
+                className="flex justify-between items-center cursor-pointer group"
+                onClick={() => setIsBajasOpen(!isBajasOpen)}
+              >
+                <div>
+                  <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
+                    <XCircle className="text-red-500" size={20}/> Agrupación de Motivos (Bajas)
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1">Haz clic para expandir y editar los motivos de baja.</p>
+                </div>
+                <div className="p-2 bg-slate-100 rounded-full group-hover:bg-slate-200 transition-colors">
+                  {isBajasOpen ? <ChevronUp size={20} className="text-slate-600"/> : <ChevronDown size={20} className="text-slate-600"/>}
                 </div>
               </div>
-            )}
+
+              {isBajasOpen && (
+                <div className="mt-6 space-y-4 pt-4 border-t border-slate-100 animate-fade-in">
+                  {sortedBreakdown.length === 0 ? (
+                    <p className="text-center text-slate-400 text-sm">No hay bajas definitivas registradas.</p>
+                  ) : (
+                    sortedBreakdown.map(([motivo, count]) => {
+                      const percent = Math.round((count / dropped) * 100);
+                      const isEditing = editingBaja && editingBaja.oldName === motivo;
+
+                      return (
+                        <div key={motivo} className="group">
+                          <div className="flex justify-between items-center text-sm mb-1.5">
+                            {isEditing ? (
+                              <div className="flex-1 flex items-center gap-2 pr-4">
+                                <input 
+                                  type="text" 
+                                  value={editingBaja.newName} 
+                                  onChange={e => setEditingBaja({...editingBaja, newName: e.target.value})}
+                                  className="flex-1 border border-indigo-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                  autoFocus
+                                />
+                                <button onClick={() => handleRenameSubmit(motivo)} className="text-xs bg-indigo-600 text-white px-2 py-1 rounded hover:bg-indigo-700 font-bold">Guardar</button>
+                                <button onClick={() => setEditingBaja(null)} className="text-xs bg-slate-200 text-slate-700 px-2 py-1 rounded hover:bg-slate-300 font-bold">Cancelar</button>
+                              </div>
+                            ) : (
+                              <div className="flex-1 flex items-center gap-2">
+                                <span className="font-semibold text-slate-700 truncate">{motivo}</span>
+                                <button 
+                                  onClick={() => setEditingBaja({ oldName: motivo, newName: motivo })}
+                                  className="text-slate-400 hover:text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity p-1"
+                                  title="Editar y agrupar este motivo"
+                                >
+                                  <Edit2 size={14} />
+                                </button>
+                              </div>
+                            )}
+                            <span className="font-bold text-red-600 flex-shrink-0">{count} <span className="text-slate-400 font-normal">({percent}%)</span></span>
+                          </div>
+                          {!isEditing && (
+                            <div className="w-full bg-slate-200/50 h-2.5 rounded-full overflow-hidden shadow-inner">
+                              <div className="bg-red-400 h-full rounded-full transition-all duration-700" style={{ width: `${percent}%` }}></div>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       );
     }
 
     // --- CASE LIST COMPONENT ---
-    function CaseList({ cases, allCases, onSelect, title, emptyMsg }) {
+    function CaseList({ cases, allCases, advisors, onSelect, title, emptyMsg }) {
       const [searchTerm, setSearchTerm] = useState('');
       const [filterAsesor, setFilterAsesor] = useState('');
       const [showOnlyNew, setShowOnlyNew] = useState(false);
 
-      const uniqueAdvisors = useMemo(() => {
-        const advSet = new Set(ADVISORS.map(a => a.name));
-        allCases.forEach(c => {
-          if (c.asesor && c.asesor !== 'No asignado') advSet.add(c.asesor);
-        });
-        return Array.from(advSet).sort();
-      }, [allCases]);
+      const uniqueAdvisors = advisors.map(a => a.name).sort();
 
-      // Búsqueda inteligente: si hay texto de búsqueda, busca en TODA la base de datos (allCases).
-      // Si no hay texto, respeta la vista de pestañas actual (cases = activos o resueltos).
       const sourceCases = searchTerm.trim() !== '' ? allCases : cases;
 
       const filtered = sourceCases.filter(c => {
@@ -928,9 +1059,7 @@
         return matchesSearch && matchesAsesor && matchesNew;
       });
 
-      const getInitials = (name) => {
-        return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
-      };
+      const getInitials = (name) => name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
 
       const getMotivoStyle = (motivo) => {
         switch(motivo) {
@@ -952,6 +1081,13 @@
         return 'text-slate-600 bg-slate-100 border-slate-200';
       };
 
+      const getAdvisorHex = (name) => {
+        const adv = advisors.find(a => a.name === name);
+        return adv ? adv.hex : '#94a3b8';
+      };
+
+      const isResolvedList = title.includes('Cerrados');
+
       return (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-fade-in w-full">
           <div className="p-4 md:p-5 border-b border-slate-100 flex flex-col xl:flex-row justify-between items-start xl:items-center bg-white gap-4">
@@ -965,7 +1101,7 @@
                     checked={showOnlyNew}
                     onChange={(e) => setShowOnlyNew(e.target.checked)}
                   />
-                  Ver solo casos nuevos (sin contactar)
+                  Ver solo casos nuevos
                 </label>
               )}
             </div>
@@ -984,7 +1120,7 @@
                 <Search className="absolute left-3 top-3 text-slate-400" size={18} />
                 <input 
                   type="text"
-                  placeholder="Buscar nombre, matrícula, teléfono..."
+                  placeholder="Buscar nombre, matrícula..."
                   className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
@@ -997,7 +1133,7 @@
               <thead>
                 <tr className="bg-slate-50/50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-100">
                   <th className="p-4 font-semibold">Matrícula</th>
-                  <th className="p-4 font-semibold">Alumno</th>
+                  <th className="p-4 font-semibold">Alumno / Asesor</th>
                   <th className="p-4 font-semibold">Carrera y Modalidad</th>
                   <th className="p-4 font-semibold">Motivo y Nivel</th>
                   <th className="p-4 font-semibold">Estado y Subestado</th>
@@ -1010,8 +1146,16 @@
                 ) : (
                   filtered.map(c => {
                     const careerInfo = CAREERS.find(car => car.name === c.carrera) || CAREERS[0];
+                    const advHex = getAdvisorHex(c.asesor);
+                    
+                    let rowBgClass = 'hover:bg-slate-50/80 bg-white';
+                    if (isResolvedList) {
+                      if (c.estado === 'Baja definitiva') rowBgClass = 'bg-red-50/40 hover:bg-red-50/80';
+                      else if (c.estado === 'Retenido') rowBgClass = 'bg-emerald-50/40 hover:bg-emerald-50/80';
+                    }
+
                     return (
-                      <tr key={c.id} className="hover:bg-slate-50/80 transition-all cursor-pointer group" onClick={() => onSelect(c.id)}>
+                      <tr key={c.id} className={`transition-all cursor-pointer group ${rowBgClass}`} onClick={() => onSelect(c.id)}>
                         <td className="p-4">
                           <div className="font-mono text-sm font-bold text-indigo-600 bg-indigo-50 inline-block px-2.5 py-1 rounded-md">{c.matricula}</div>
                         </td>
@@ -1021,10 +1165,17 @@
                               {getInitials(c.nombre)}
                             </div>
                             <div>
-                              <div className="font-bold text-slate-800">{c.nombre}</div>
-                              <div className="flex items-center gap-3 mt-0.5">
+                              <div className="font-bold text-slate-800 flex items-center gap-2">
+                                {c.nombre}
+                              </div>
+                              <div className="flex items-center gap-3 mt-1">
                                 <span className="text-xs text-slate-500 flex items-center gap-1"><Phone size={10} /> {c.telefono}</span>
-                                <span className="text-xs text-slate-500 flex items-center gap-1 border-l border-slate-300 pl-2"><User size={10} /> {c.asesor || 'Sin asesor'}</span>
+                                <span 
+                                  className="text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded border"
+                                  style={{ backgroundColor: advHex + '1A', color: advHex, borderColor: advHex + '40' }}
+                                >
+                                  {c.asesor || 'Sin Asesor'}
+                                </span>
                               </div>
                             </div>
                           </div>
@@ -1091,23 +1242,23 @@
     }
 
     function StatusBadge({ status }) {
-      let styles = "bg-slate-100 text-slate-700";
-      if (status === 'Retenido') styles = "bg-emerald-100 text-emerald-800 border border-emerald-200";
-      if (status === 'Baja definitiva') styles = "bg-red-100 text-red-800 border border-red-200";
-      if (status === 'Nuevo caso') styles = "bg-sky-100 text-sky-800 border border-sky-200";
-      if (status === 'En seguimiento') styles = "bg-indigo-100 text-indigo-800 border border-indigo-200";
-      if (status === 'Esperando respuesta') styles = "bg-amber-100 text-amber-800 border border-amber-200";
+      let styles = "bg-slate-100 text-slate-700 border-slate-200";
+      if (status === 'Retenido') styles = "bg-emerald-100 text-emerald-800 border-emerald-200";
+      if (status === 'Baja definitiva') styles = "bg-red-100 text-red-800 border-red-200";
+      if (status === 'Nuevo caso') styles = "bg-sky-100 text-sky-800 border-sky-200";
+      if (status === 'En seguimiento') styles = "bg-indigo-100 text-indigo-800 border-indigo-200";
+      if (status === 'Esperando respuesta') styles = "bg-amber-100 text-amber-800 border-amber-200";
 
-      return <span className={`px-2.5 py-1.5 rounded-md text-[11px] uppercase tracking-wider font-bold shadow-sm ${styles}`}>{status}</span>;
+      return <span className={`px-2.5 py-1.5 rounded-md text-[11px] uppercase tracking-wider font-bold shadow-sm border ${styles}`}>{status}</span>;
     }
 
     // --- CASE FORM COMPONENT ---
-    function CaseForm({ onSave, onCancel, cases = [], onOpenCase }) {
+    function CaseForm({ onSave, onCancel, cases = [], advisors, onOpenCase }) {
+      const initialAsesor = advisors.length > 0 ? advisors[0].name : '';
       const [formData, setFormData] = useState({
-        matricula: '', nombre: '', telefono: '', carrera: CAREERS[0].name, modalidad: CAREERS[0].modalities[0], tipoAlumno: [], nivelCaso: NIVELES_CASO[0], estado: 'Nuevo caso', subestado: SUB_STATUSES[0], motivo: REASONS[0], empresaAmiga: false, nombreEmpresa: '', observacion: '', tipoBaja: 'NO CONTINUA', detalleBaja: BAJA_SUBCATEGORIES[0], asesor: ADVISORS[0].name
+        matricula: '', nombre: '', telefono: '', carrera: CAREERS[0].name, modalidad: CAREERS[0].modalities[0], tipoAlumno: [], nivelCaso: NIVELES_CASO[0], estado: 'Nuevo caso', subestado: SUB_STATUSES[0], motivo: REASONS[0], empresaAmiga: false, nombreEmpresa: '', observacion: '', tipoBaja: 'NO CONTINUA', detalleBaja: BAJA_SUBCATEGORIES[0], asesor: initialAsesor
       });
 
-      // Lógica segura para determinar si es un duplicado verdadero (no vacío)
       const inputMatricula = formData.matricula ? String(formData.matricula).trim() : '';
       const duplicateCase = inputMatricula ? cases.find(c => {
          const cMat = c.matricula ? String(c.matricula).trim() : '';
@@ -1120,7 +1271,6 @@
         if (isDuplicate) return;
 
         const dataToSave = {...formData};
-        
         if (dataToSave.estado === 'Baja definitiva' || dataToSave.estado === 'Retenido') {
           if (!dataToSave.fechaResolucion) dataToSave.fechaResolucion = new Date().toISOString().split('T')[0];
         } else {
@@ -1138,11 +1288,9 @@
           dataToSave.asesor = (dataToSave.asesorOtro || '').trim() || 'Sin especificar';
         }
         
-        // Limpiar campos temporales para no subirlos a Firebase y evitar undefined
         delete dataToSave.asesorOtro;
         delete dataToSave.detalleBajaOtro;
 
-        // Limpiar undefined a nivel de raiz
         Object.keys(dataToSave).forEach(key => {
           if (dataToSave[key] === undefined) delete dataToSave[key];
         });
@@ -1154,11 +1302,7 @@
         const newCareerName = e.target.value;
         const newCareerObj = CAREERS.find(c => c.name === newCareerName);
         let currentModality = formData.modalidad;
-
-        if (!newCareerObj.modalities.includes(currentModality)) {
-          currentModality = newCareerObj.modalities[0];
-        }
-
+        if (!newCareerObj.modalities.includes(currentModality)) currentModality = newCareerObj.modalities[0];
         setFormData({...formData, carrera: newCareerName, modalidad: currentModality});
       };
 
@@ -1183,9 +1327,7 @@
                <div className="p-2.5 rounded-xl" style={{ backgroundColor: careerInfo.hex + '20', color: careerInfo.hex }}>
                  <UserPlus size={24} />
                </div>
-               <h3 className="text-xl font-bold text-slate-800">
-                 Registrar Estudiante
-               </h3>
+               <h3 className="text-xl font-bold text-slate-800">Registrar Estudiante</h3>
             </div>
           </div>
           
@@ -1196,7 +1338,7 @@
                 <select className="w-full sm:w-1/2 border border-slate-300 rounded-xl p-2.5 focus:ring-2 outline-none transition-shadow bg-white"
                   style={{ '--tw-ring-color': careerInfo.hex }}
                   value={formData.asesor} onChange={e => setFormData({...formData, asesor: e.target.value})}>
-                  {ADVISORS.map(a => <option key={a.name} value={a.name}>{a.name}</option>)}
+                  {advisors.map(a => <option key={a.name} value={a.name}>{a.name}</option>)}
                   <option value="Otro">Otro (Ingresar manualmente)</option>
                 </select>
                 {formData.asesor === 'Otro' && (
@@ -1216,24 +1358,27 @@
               </div>
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-1">Matrícula</label>
-                {(() => {
-                  const isDuplicate = cases.some(c => c.matricula.trim() === formData.matricula.trim() && c.matricula.trim() !== '');
-                  return (
-                    <>
-                      <input required type="text" className={`w-full border rounded-xl p-2.5 focus:ring-2 outline-none transition-shadow ${isDuplicate ? 'border-red-400 bg-red-50 text-red-900' : 'border-slate-300'}`}
-                        style={{ '--tw-ring-color': careerInfo.hex }}
-                        value={formData.matricula} onChange={e => setFormData({...formData, matricula: e.target.value})} />
-                      {isDuplicate && (
-                        <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg animate-fade-in flex flex-col gap-2">
-                          <span className="text-red-600 text-xs font-bold flex items-center gap-1"><AlertTriangle size={14}/> Matrícula ya registrada.</span>
-                          <button type="button" onClick={() => onOpenCase(duplicateCase.id)} className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 self-start transition-colors bg-white px-2 py-1 rounded border border-indigo-200">
-                            Abrir registro original <ChevronRight size={12}/>
-                          </button>
-                        </div>
-                      )}
-                    </>
-                  );
-                })()}
+                <input required type="text" className={`w-full border rounded-xl p-2.5 focus:ring-2 outline-none transition-shadow ${isDuplicate ? 'border-red-400 bg-red-50 text-red-900' : 'border-slate-300'}`}
+                  style={{ '--tw-ring-color': careerInfo.hex }}
+                  value={formData.matricula} onChange={e => setFormData({...formData, matricula: e.target.value})} />
+                
+                {/* Lógica de Notificación de Matrícula */}
+                {isDuplicate ? (
+                  <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg animate-fade-in flex flex-col gap-2">
+                    <span className="text-red-600 text-xs font-bold flex items-center gap-1"><AlertTriangle size={14}/> Matrícula ya registrada.</span>
+                    <button type="button" onClick={() => onOpenCase(duplicateCase.id)} className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 self-start transition-colors bg-white px-2 py-1 rounded border border-indigo-200">
+                      Abrir registro original <ChevronRight size={12}/>
+                    </button>
+                  </div>
+                ) : (
+                  formData.matricula.trim().length >= 3 && (
+                    <div className="mt-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg animate-fade-in">
+                      <span className="text-emerald-700 text-xs font-bold flex items-center gap-1">
+                        <CheckCircle2 size={14}/> Verificado: Es un caso nuevo.
+                      </span>
+                    </div>
+                  )
+                )}
               </div>
             </div>
 
@@ -1367,7 +1512,6 @@
                 style={{ '--tw-ring-color': careerInfo.hex }}
                 placeholder="Detalla la situación particular..."
                 value={formData.observacion || ''} onChange={e => setFormData({...formData, observacion: e.target.value})}></textarea>
-              <p className="text-xs text-slate-500 mt-2">* Nota: Luego podrás añadir un historial detallado paso a paso desde el panel del caso.</p>
             </div>
 
             <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
@@ -1389,9 +1533,8 @@
     }
 
     // --- CASE DETAIL COMPONENT ---
-    function CaseDetail({ caseData, onBack, onUpdate, onDelete }) {
+    function CaseDetail({ caseData, advisors, onBack, onUpdate, onDelete }) {
       const [localData, setLocalData] = useState(caseData);
-      
       const [showDeleteModal, setShowDeleteModal] = useState(false);
       const [showBajaModal, setShowBajaModal] = useState(false);
       
@@ -1426,7 +1569,6 @@
       const extraProofOffer = caseData.empresaAmiga ? 20 : 40;
       const totalProofDiscount = currentDiscount + extraProofOffer; 
 
-      // --- INLINE EDITING HANDLERS ---
       const handleBlur = (field, value) => {
         if (caseData[field] !== value) {
           onUpdate({ ...caseData, [field]: value });
@@ -1464,11 +1606,9 @@
         setShowBajaModal(false);
       };
 
-      // --- GENERADOR DE MENSAJE DE WHATSAPP ---
       const getWhatsAppUrl = () => {
         const asesorName = caseData.asesor && caseData.asesor !== 'No asignado' ? caseData.asesor : 'Lucas';
         const greeting = `Hola, ${caseData.nombre} ${caseData.matricula} ¿cómo estás? 👋\n\nTe escribe ${asesorName} del Departamento Comercial de Cervantes.\n\n`;
-        
         let body = '';
         if (caseData.motivo === 'Económico') {
           body = `Vimos que tu solicitud de baja está relacionada con un motivo económico y queríamos saber si podemos ayudarte antes de avanzar con la baja definitiva.\n\nEn algunos casos contamos con ayudas económicas transitorias o alternativas de pago para que los estudiantes puedan continuar el cursado sin tener que dejar la carrera.\n\nSi te parece, lo vemos unos minutos y evaluamos si hay alguna opción que se adapte a tu situación actual.\n\nQuedo atento a lo que nos quieras comentar.`;
@@ -1477,30 +1617,23 @@
         } else {
           body = `Vimos tu solicitud de baja y queríamos consultarte un poco más sobre el motivo, así podemos entender bien tu situación y ver si existe alguna alternativa para acompañarte.\n\n¿Tiene que ver con cuestiones laborales, falta de tiempo, temas de salud o algún otro motivo en particular?\n\nSi querés, contame un poco más y lo vemos juntos.`;
         }
-        
         const text = encodeURIComponent(greeting + body);
         return `https://wa.me/${cleanPhone}?text=${text}`;
       };
 
       const handleWhatsAppClick = () => {
-        if (caseData.estado === 'Nuevo caso') {
-          onUpdate({ ...caseData, estado: 'En seguimiento' });
-        }
+        if (caseData.estado === 'Nuevo caso') onUpdate({ ...caseData, estado: 'En seguimiento' });
       };
 
-      // --- HISTORIAL HANDLERS ---
       const handleAddInteraction = () => {
         if (!newInteraction.trim()) return;
-        
         const interaccion = {
           id: Date.now().toString(),
           fecha: new Date().toISOString(),
           texto: newInteraction.trim(),
           rol: interactionType
         };
-
         const currentInteracciones = caseData.interacciones || [];
-        
         if (currentInteracciones.length === 0 && caseData.observacion) {
           currentInteracciones.push({
             id: 'initial',
@@ -1509,12 +1642,10 @@
             rol: 'sistema'
           });
         }
-
         onUpdate({
           ...caseData,
           interacciones: [...currentInteracciones, interaccion]
         });
-
         setNewInteraction('');
       };
 
@@ -1531,7 +1662,6 @@
 
       const handleEditMsgSave = () => {
         let finalInteractions = [...(caseData.interacciones || [])];
-        
         if (editingMsgId === 'old' || editingMsgId === 'initial') {
           if (finalInteractions.length === 0) {
             finalInteractions = [{
@@ -1542,44 +1672,23 @@
             }];
           } else {
             const idx = finalInteractions.findIndex(i => i.id === 'initial' || i.id === 'old');
-            if (idx !== -1) {
-              finalInteractions[idx].texto = editingMsgText;
-            }
+            if (idx !== -1) finalInteractions[idx].texto = editingMsgText;
           }
-          
-          onUpdate({
-            ...caseData,
-            observacion: editingMsgText, 
-            interacciones: finalInteractions
-          });
+          onUpdate({ ...caseData, observacion: editingMsgText, interacciones: finalInteractions });
         } else {
-          finalInteractions = finalInteractions.map(i => 
-            i.id === editingMsgId ? { ...i, texto: editingMsgText } : i
-          );
-          onUpdate({
-            ...caseData,
-            interacciones: finalInteractions
-          });
+          finalInteractions = finalInteractions.map(i => i.id === editingMsgId ? { ...i, texto: editingMsgText } : i );
+          onUpdate({ ...caseData, interacciones: finalInteractions });
         }
-        
         setEditingMsgId(null);
         setEditingMsgText("");
       };
 
       const handleDeleteMsgConfirm = (msgId) => {
         let finalInteractions = [...(caseData.interacciones || [])];
-        
         if (msgId === 'old' || msgId === 'initial') {
-          onUpdate({
-            ...caseData,
-            observacion: '',
-            interacciones: finalInteractions.filter(i => i.id !== 'initial' && i.id !== 'old')
-          });
+          onUpdate({ ...caseData, observacion: '', interacciones: finalInteractions.filter(i => i.id !== 'initial' && i.id !== 'old') });
         } else {
-          onUpdate({
-            ...caseData,
-            interacciones: finalInteractions.filter(i => i.id !== msgId)
-          });
+          onUpdate({ ...caseData, interacciones: finalInteractions.filter(i => i.id !== msgId) });
         }
         setDeletingMsgId(null);
       };
@@ -1597,15 +1706,14 @@
         return 'text-slate-600 bg-slate-100 border-slate-200';
       };
 
-      const getAsesorColor = (asesorName) => {
-        const found = ADVISORS.find(a => a.name === asesorName);
-        return found ? found.colorClass : 'bg-slate-100 text-slate-700';
+      const getAdvisorHex = (name) => {
+        const adv = advisors.find(a => a.name === name);
+        return adv ? adv.hex : '#94a3b8';
       };
 
       return (
         <div className="space-y-6 relative animate-fade-in pb-10">
           
-          {/* MODAL CONFIRMACIÓN ELIMINAR CASO */}
           {showDeleteModal && (
             <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
               <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl animate-fade-in border border-slate-100">
@@ -1615,18 +1723,13 @@
                 <h3 className="text-xl font-bold text-center text-slate-800 mb-2">¿Eliminar este caso?</h3>
                 <p className="text-center text-slate-500 font-medium mb-8">Esta acción es permanente y se borrará de Firebase.</p>
                 <div className="flex flex-col sm:flex-row gap-3">
-                  <button onClick={() => setShowDeleteModal(false)} className="flex-1 py-3 px-4 font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors">
-                    Cancelar
-                  </button>
-                  <button onClick={() => onDelete(caseData.id)} className="flex-1 py-3 px-4 font-bold text-white bg-red-500 hover:bg-red-600 rounded-xl transition-colors shadow-sm">
-                    Sí, eliminar
-                  </button>
+                  <button onClick={() => setShowDeleteModal(false)} className="flex-1 py-3 px-4 font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors">Cancelar</button>
+                  <button onClick={() => onDelete(caseData.id)} className="flex-1 py-3 px-4 font-bold text-white bg-red-500 hover:bg-red-600 rounded-xl transition-colors shadow-sm">Sí, eliminar</button>
                 </div>
               </div>
             </div>
           )}
 
-          {/* MODAL DETALLE BAJA DEFINITIVA */}
           {showBajaModal && (
             <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
               <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl animate-fade-in border border-slate-100">
@@ -1669,16 +1772,12 @@
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-3">
-                  <button onClick={() => setShowBajaModal(false)} className="flex-1 py-3 px-4 font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors">
-                    Cancelar
-                  </button>
+                  <button onClick={() => setShowBajaModal(false)} className="flex-1 py-3 px-4 font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors">Cancelar</button>
                   <button 
                     onClick={confirmBajaDefinitiva} 
                     disabled={localData.detalleBaja === 'Otro' && !(localData.detalleBajaOtro || '').trim()}
                     className="flex-1 py-3 px-4 font-bold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors shadow-sm disabled:opacity-50"
-                  >
-                    Confirmar Baja
-                  </button>
+                  >Confirmar Baja</button>
                 </div>
               </div>
             </div>
@@ -1700,8 +1799,6 @@
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            
-            {/* Columna Izquierda: Información del Estudiante y Estado (EDITABLE INLINE) */}
             <div className="lg:col-span-1 space-y-6">
               
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 md:p-6 border-t-4" style={{ borderTopColor: careerInfo.hex }}>
@@ -1750,16 +1847,19 @@
                 </div>
 
                 <div className="space-y-4 mt-6">
-
                   <div>
                     <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Asesor Asignado</p>
                     <select 
-                      className={`w-full border rounded-lg p-2 text-sm font-bold outline-none focus:ring-2 shadow-sm ${getAsesorColor(localData.asesor)}`}
+                      className="w-full border rounded-lg p-2 text-sm font-bold outline-none focus:ring-2 shadow-sm bg-slate-50 text-slate-700"
                       value={localData.asesor || ''} 
                       onChange={e => handleSelectChange('asesor', e.target.value)}
                     >
-                      {ADVISORS.map(a => <option key={a.name} value={a.name}>{a.name}</option>)}
+                      {advisors.map(a => <option key={a.name} value={a.name}>{a.name}</option>)}
                     </select>
+                    <div 
+                       className="h-1.5 w-full mt-1.5 rounded-full" 
+                       style={{ backgroundColor: getAdvisorHex(localData.asesor) }}
+                    ></div>
                   </div>
                   
                   <div>
@@ -1916,10 +2016,8 @@
 
             </div>
 
-            {/* Columna Derecha: Estrategia y NUEVO Historial de Negociación */}
             <div className="lg:col-span-2 space-y-6 flex flex-col">
               
-              {/* Tarjetas de Estrategia */}
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex-shrink-0">
                 <div className="p-4 border-b border-slate-100 flex items-center justify-between">
                   <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
@@ -1929,7 +2027,6 @@
                 
                 <div className="p-4 md:p-5 grid grid-cols-1 md:grid-cols-2 gap-5 bg-slate-50/50">
                   
-                  {/* Estrategia Económica */}
                   <div className={`rounded-xl border shadow-sm bg-white ${isTimeIssue && !isEconIssue ? 'border-slate-200' : 'border-emerald-200'}`}>
                     <div className={`p-3 border-b ${isTimeIssue && !isEconIssue ? 'border-slate-100' : 'border-emerald-100 bg-emerald-50/50 rounded-t-xl'}`}>
                       <h4 className={`text-sm font-bold flex items-center gap-1.5 ${isTimeIssue && !isEconIssue ? 'text-slate-500' : 'text-emerald-800'}`}>
@@ -1965,7 +2062,6 @@
                     </div>
                   </div>
 
-                  {/* Opciones de Modalidad */}
                   <div className="bg-white rounded-xl border border-blue-200 shadow-sm overflow-hidden">
                     <div className="p-3 border-b border-blue-100 bg-blue-50/50">
                       <h4 className="text-sm font-bold text-blue-800 flex items-center gap-1.5">Opciones de Cambio Modalidad</h4>
@@ -1985,14 +2081,12 @@
                 </div>
               </div>
 
-              {/* --- HISTORIAL (BITÁCORA) --- */}
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col flex-1 min-h-[400px]">
                 <div className="p-4 border-b border-slate-100 flex items-center gap-2 bg-slate-50/50 rounded-t-2xl">
                   <Archive size={20} className="text-slate-400" />
                   <h3 className="font-bold text-slate-700">Bitácora de Observaciones y Negociación</h3>
                 </div>
 
-                {/* Lista Historial */}
                 <div className="flex-1 overflow-y-auto p-4 md:p-5 space-y-4 custom-scrollbar bg-slate-50/30">
                   {interacciones.map((msg, index) => {
                     let d;
@@ -2089,7 +2183,6 @@
                   <div ref={historyEndRef} />
                 </div>
 
-                {/* Input Historial */}
                 <div className="p-4 md:p-5 bg-white border-t border-slate-100 rounded-b-2xl">
                   <div className="flex flex-col gap-3">
                     <div className="flex flex-wrap items-center gap-2">
