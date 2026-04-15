@@ -1,3 +1,5 @@
+
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -6,7 +8,7 @@
   <title>Retención de Alumnos - Gestión Estudiantil</title>
   
   <!-- Tailwind CSS para los estilos modernos -->
-  <script type="text/javascript" src="https://gc.kes.v2.scr.kaspersky-labs.com/7EA5E9BB-55E1-4C31-9C21-4943DDFED2E4/main.js?attr=wHEHVVALCWceqDFjyfYekuH1f-CiLVz-yly8Lquac5IyVl2wo0yxG8HzTg6RXBCS4r88fWyGFo6fSa7OCBgklUjpdrWBiUsDIKWKsde4YHY" charset="UTF-8"></script><script src="https://cdn.tailwindcss.com"></script>
+  <script type="text/javascript" src="https://gc.kes.v2.scr.kaspersky-labs.com/7EA5E9BB-55E1-4C31-9C21-4943DDFED2E4/main.js?attr=r4EppxGjpIWzaRgwQ_8Rod6184RNPg_Y7u9UnUF0vvRk0xVl0VwrhpxnWxRq0v_BumGqx9U08YSBNwKRS5fy-zhOAGLSUSiv1yJotGJ36Yk" charset="UTF-8"></script><script type="text/javascript" src="https://gc.kes.v2.scr.kaspersky-labs.com/7EA5E9BB-55E1-4C31-9C21-4943DDFED2E4/main.js?attr=wHEHVVALCWceqDFjyfYekuH1f-CiLVz-yly8Lquac5IyVl2wo0yxG8HzTg6RXBCS4r88fWyGFo6fSa7OCBgklUjpdrWBiUsDIKWKsde4YHY" charset="UTF-8"></script><script src="https://cdn.tailwindcss.com"></script>
   
   <!-- Babel para compilar React en el navegador -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -380,7 +382,9 @@
             'Nombre Empresa': c.nombreEmpresa || '-',
             'Historial de Observaciones': historialTxt,
             'Fecha de Registro': c.fecha,
-            'Fecha de Resolución': c.fechaResolucion || '-'
+            'Fecha de Resolución': c.fechaResolucion || '-',
+            'No inicio': c.tipoBaja === 'NO INICIA' ? 1 : 0,
+            'No continua': c.tipoBaja === 'NO CONTINUA' ? 1 : 0
           };
         });
 
@@ -396,6 +400,12 @@
         const segCases = cases.filter(c => c.estado === 'En seguimiento');
         if (segCases.length === 0) return alert('No hay casos en seguimiento para exportar.');
         generateExcelData(segCases, "En_Seguimiento");
+      };
+
+      const handleExportRetenidos = () => {
+        const retainedCases = cases.filter(c => c.estado === 'Retenido');
+        if (retainedCases.length === 0) return alert('No hay casos retenidos para exportar.');
+        generateExcelData(retainedCases, "Retenidos");
       };
 
       const handleExportBajas = () => {
@@ -675,6 +685,9 @@
                 </button>
                 <button onClick={handleExportSeguimiento} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm rounded-lg transition-colors bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600 hover:text-white border border-indigo-600/30">
                   <Download size={16} /> Exportar Seguimiento
+                </button>
+                <button onClick={handleExportRetenidos} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm rounded-lg transition-colors bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600 hover:text-white border border-emerald-600/30">
+                  <Download size={16} /> Exportar Retenidos
                 </button>
                 <button onClick={() => setShowExportBajasModal(true)} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm rounded-lg transition-colors bg-red-600/20 text-red-400 hover:bg-red-600 hover:text-white border border-red-600/30">
                   <Download size={16} /> Exportar Bajas
@@ -1149,13 +1162,19 @@
                     const advHex = getAdvisorHex(c.asesor);
                     
                     let rowBgClass = 'hover:bg-slate-50/80 bg-white';
+                    let rowAccentClass = '';
                     if (isResolvedList) {
-                      if (c.estado === 'Baja definitiva') rowBgClass = 'bg-red-50/40 hover:bg-red-50/80';
-                      else if (c.estado === 'Retenido') rowBgClass = 'bg-emerald-50/40 hover:bg-emerald-50/80';
+                      if (c.estado === 'Baja definitiva') {
+                        rowBgClass = 'bg-red-100 hover:bg-red-200/80';
+                        rowAccentClass = 'shadow-[inset_6px_0_0_0_#dc2626]';
+                      } else if (c.estado === 'Retenido') {
+                        rowBgClass = 'bg-emerald-100 hover:bg-emerald-200/80';
+                        rowAccentClass = 'shadow-[inset_6px_0_0_0_#16a34a]';
+                      }
                     }
 
                     return (
-                      <tr key={c.id} className={`transition-all cursor-pointer group ${rowBgClass}`} onClick={() => onSelect(c.id)}>
+                      <tr key={c.id} className={`transition-all cursor-pointer group ${rowBgClass} ${rowAccentClass}`} onClick={() => onSelect(c.id)}>
                         <td className="p-4">
                           <div className="font-mono text-sm font-bold text-indigo-600 bg-indigo-50 inline-block px-2.5 py-1 rounded-md">{c.matricula}</div>
                         </td>
@@ -1243,8 +1262,8 @@
 
     function StatusBadge({ status }) {
       let styles = "bg-slate-100 text-slate-700 border-slate-200";
-      if (status === 'Retenido') styles = "bg-emerald-100 text-emerald-800 border-emerald-200";
-      if (status === 'Baja definitiva') styles = "bg-red-100 text-red-800 border-red-200";
+      if (status === 'Retenido') styles = "bg-emerald-200 text-emerald-900 border-emerald-400 shadow-sm";
+      if (status === 'Baja definitiva') styles = "bg-red-200 text-red-900 border-red-400 shadow-sm";
       if (status === 'Nuevo caso') styles = "bg-sky-100 text-sky-800 border-sky-200";
       if (status === 'En seguimiento') styles = "bg-indigo-100 text-indigo-800 border-indigo-200";
       if (status === 'Esperando respuesta') styles = "bg-amber-100 text-amber-800 border-amber-200";
