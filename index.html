@@ -1,5 +1,6 @@
 
 
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -15,6 +16,9 @@
   
   <!-- SheetJS para exportar e importar a Excel real (.xlsx) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+  <!-- Tesseract OCR para leer capturas pegadas en Registrar Caso -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
   <!-- Mapa de Importación para React y Lucide Icons -->
   <script type="importmap">
@@ -102,7 +106,7 @@
       'Distancia': 'Contenidos en autogestión/Teams (grabados). Examen sincrónico. Tutorías y 3 encuentros opcionales. Chat con respuesta en 24hs.'
     };
 
-    const STATUSES = ['Nuevo caso', 'En seguimiento', 'Esperando respuesta', 'Retenido', 'Baja definitiva'];
+    const STATUSES = ['A la espera de ser contactado', 'Nuevo caso', 'En seguimiento', 'Esperando respuesta', 'Pendiente de cargar descuento', 'Retenido', 'Baja definitiva'];
     const SUB_STATUSES = [
       'Solicitud de baja', 
       'Solicitud de postergar su inicio', 
@@ -123,6 +127,82 @@
       'Nivel 3 — Riesgo Crítico',
       'Nivel 4 — Baja No Económica'
     ];
+
+    const ASESOR_PENDIENTE = 'A la espera de ser contactado';
+
+    const normalizeNivelCaso = (nivel) => {
+      const raw = String(nivel || '').trim();
+      if (!raw) return '';
+      const found = NIVELES_CASO.find(n => raw === n || raw.toLowerCase() === n.toLowerCase() || raw.toLowerCase().startsWith(n.split('—')[0].trim().toLowerCase()));
+      return found || raw;
+    };
+
+    const normalizeEstadoCaso = (estado) => {
+      const raw = String(estado || '').trim();
+      if (!raw) return 'Nuevo caso';
+      if (raw.toLowerCase().includes('pendiente') && raw.toLowerCase().includes('descuento')) return 'Pendiente de cargar descuento';
+      if (raw.toLowerCase().includes('espera') && raw.toLowerCase().includes('contact')) return 'A la espera de ser contactado';
+      if (raw.includes('Baja')) return 'Baja definitiva';
+      return STATUSES.includes(raw) ? raw : raw;
+    };
+
+    const normalizeText = (value) => String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
+
+    const mapCareerName = (raw) => {
+      const text = normalizeText(raw);
+      if (!text) return '';
+      if (text.includes('recursos humanos')) return 'Recursos Humanos';
+      if (text.includes('administracion')) return 'Administración de Empresas';
+      if (text.includes('marketing')) return 'Marketing';
+      if (text.includes('sistemas')) return 'Analista de Sistemas';
+      if (text.includes('desarrollo web')) return 'Desarrollo Web';
+      if (text.includes('inteligencia artificial') || text.includes('ciencia de datos')) return 'Inteligencia Artificial';
+      if (text.includes('higiene') || text.includes('seguridad')) return 'Higiene y Seguridad';
+      if (text.includes('inmobiliaria') || text.includes('martillero') || text.includes('corredor')) return 'Gestión Inmobiliaria';
+      const found = CAREERS.find(c => text.includes(normalizeText(c.name)));
+      return found ? found.name : '';
+    };
+
+    const mapModalityName = (raw) => {
+      const text = normalizeText(raw);
+      if (text.includes('semi')) return 'Semipresencial';
+      if (text.includes('distancia')) return 'Distancia';
+      if (text.includes('presencial')) return 'Presencial';
+      return '';
+    };
+
+    const parseStudentDataFromText = (rawText) => {
+      const text = String(rawText || '').replace(/\r/g, '\n');
+      const oneLine = text.replace(/\n+/g, ' ');
+      const pick = (...patterns) => {
+        for (const pattern of patterns) {
+          const m = text.match(pattern) || oneLine.match(pattern);
+          if (m && m[1]) return m[1].trim().replace(/\s{2,}/g, ' ');
+        }
+        return '';
+      };
+
+      const matricula = pick(/Matr[ií]cula\s*:?\s*(\d{3,})/i, /Buscar\s+Matr[ií]cula\s+Nro\.?\s*:?\s*(\d{3,})/i, /\b(\d{5,6})\b/);
+      const apellido = pick(/Apellido\s*:?\s*([A-ZÁÉÍÓÚÑ ]{2,})(?=\s+Nombres|\n|$)/i);
+      const nombres = pick(/Nombres?\s*:?\s*([A-ZÁÉÍÓÚÑ ]{2,})(?=\s+Area|\s+Área|\n|$)/i);
+      const fullNameFromText = pick(/Apellido y nombre\s*:?\s*([^\n]+)/i, /Alumno\s*:?\s*([^\n]+)/i);
+      const nombre = [apellido, nombres].filter(Boolean).join(' ').trim() || fullNameFromText;
+      const telefono = pick(/Cel\.?\s*:?\s*([+()\d\s.-]{6,})/i, /Celular\s*:?\s*([+()\d\s.-]{6,})/i, /Tel[eé]fono\s*:?\s*([+()\d\s.-]{6,})/i);
+      const carreraRaw = pick(/Carrera\s+Inicial\s*:?\s*([^\n]+)/i, /Carrera\s*:?\s*([^\n]+)/i, /Titulo Final\s*:?\s*([^\n]+)/i, /Título Final\s*:?\s*([^\n]+)/i);
+      const modalidadRaw = pick(/Modalidad\s*:?\s*([^\n]+)/i) || carreraRaw;
+
+      return {
+        matricula,
+        nombre,
+        telefono: telefono.replace(/[^+\d-]/g, ''),
+        carrera: mapCareerName(carreraRaw),
+        modalidad: mapModalityName(modalidadRaw),
+        observacion: text.trim() ? `Datos cargados desde captura o texto pegado.\n\n${text.trim().slice(0, 1200)}` : ''
+      };
+    };
 
     const DEFAULT_ADVISORS = [
       { name: 'Lucas', hex: '#3b82f6' },
@@ -333,7 +413,8 @@
           const deletedCase = cases.find(c => c.id === id);
           if (!deletedCase) return;
           
-          if (deletedCase.estado === 'Retenido' || deletedCase.estado === 'Baja definitiva') navigateTo('resolved');
+          if (deletedCase.estado === 'Pendiente de cargar descuento') navigateTo('pendingDiscount');
+          else if (deletedCase.estado === 'Retenido' || deletedCase.estado === 'Baja definitiva') navigateTo('resolved');
           else navigateTo('list');
 
           const docRef = doc(db, 'casos', id);
@@ -366,6 +447,7 @@
           }
 
           return {
+            'ID Caso': c.caseNumber,
             'Nº Caso': c.caseNumber,
             'Asesor': c.asesor || 'No asignado',
             'Matrícula': c.matricula,
@@ -428,64 +510,96 @@
       };
 
       const handleImportExcel = (e) => {
-        // [Lógica de importación conservada intacta]
         const file = e.target.files[0];
         if (!file) return;
         const reader = new FileReader();
+
+        const readCell = (row, names, fallback = '') => {
+          for (const name of names) {
+            if (row[name] !== undefined && row[name] !== null && String(row[name]).trim() !== '') return row[name];
+          }
+          return fallback;
+        };
+
+        const buildCaseFromRow = (row, existingCase = {}, caseNumberFallback = '') => {
+          const estadoRaw = readCell(row, ['Estado', 'estado'], existingCase.estado || 'Nuevo caso');
+          const tipoAlumnoRaw = readCell(row, ['Tipo Alumno', 'Tipo de Alumno', 'tipoAlumno'], existingCase.tipoAlumno || []);
+          const tipoAlumno = Array.isArray(tipoAlumnoRaw) ? tipoAlumnoRaw : String(tipoAlumnoRaw || '').split(',').map(t => t.trim()).filter(Boolean);
+          const empresaRaw = readCell(row, ['Empresa Amiga', 'Empresa amiga', 'empresaAmiga'], existingCase.empresaAmiga ? 'Sí' : 'No');
+          const nivelRaw = readCell(row, ['Nivel de Caso', 'Nivel', 'nivelCaso'], existingCase.nivelCaso || NIVELES_CASO[0]);
+          const estado = normalizeEstadoCaso(estadoRaw);
+          const fechaResolucion = readCell(row, ['Fecha de Resolución', 'Fecha Resolución', 'fechaResolucion'], existingCase.fechaResolucion || '');
+          const detalleBaja = readCell(row, ['Detalle Baja', 'Detalle de Baja', 'detalleBaja'], existingCase.detalleBaja || '');
+
+          return {
+            ...existingCase,
+            caseNumber: String(readCell(row, ['ID Caso', 'Id Caso', 'Nº Caso', 'N° Caso', 'Caso', 'caseNumber'], existingCase.caseNumber || caseNumberFallback)).trim(),
+            asesor: String(readCell(row, ['Asesor', 'asesor'], existingCase.asesor || ASESOR_PENDIENTE)).trim() || ASESOR_PENDIENTE,
+            matricula: String(readCell(row, ['Matrícula', 'Matricula', 'matricula'], existingCase.matricula || '')).trim(),
+            nombre: String(readCell(row, ['Nombre', 'Alumno', 'Apellido y Nombre', 'nombre'], existingCase.nombre || 'Alumno Importado')).trim(),
+            telefono: String(readCell(row, ['Teléfono', 'Telefono', 'Celular', 'Cel', 'telefono'], existingCase.telefono || '')).trim(),
+            carrera: mapCareerName(readCell(row, ['Carrera', 'carrera'], existingCase.carrera || '')) || existingCase.carrera || CAREERS[0].name,
+            modalidad: mapModalityName(readCell(row, ['Modalidad', 'modalidad'], existingCase.modalidad || '')) || existingCase.modalidad || 'Presencial',
+            tipoAlumno,
+            nivelCaso: normalizeNivelCaso(nivelRaw) || NIVELES_CASO[0],
+            estado,
+            subestado: String(readCell(row, ['Subestado', 'Sub Estado', 'subestado'], existingCase.subestado || SUB_STATUSES[0])).trim(),
+            motivo: String(readCell(row, ['Motivo Principal', 'Motivo', 'motivo'], existingCase.motivo || REASONS[0])).trim(),
+            empresaAmiga: String(empresaRaw).trim().toLowerCase().startsWith('s') || empresaRaw === true,
+            nombreEmpresa: String(readCell(row, ['Nombre Empresa', 'Empresa', 'nombreEmpresa'], existingCase.nombreEmpresa || '')).replace('-', '').trim(),
+            observacion: String(readCell(row, ['Historial de Observaciones', 'Observación', 'Observacion', 'observacion'], existingCase.observacion || 'Caso importado desde Excel externo.')).trim(),
+            fecha: String(readCell(row, ['Fecha de Registro', 'Fecha Registro', 'fecha'], existingCase.fecha || new Date().toISOString().split('T')[0])).trim(),
+            fechaResolucion: (estado === 'Retenido' || estado === 'Baja definitiva') ? (String(fechaResolucion).trim() || new Date().toISOString().split('T')[0]) : null,
+            tipoBaja: estado === 'Baja definitiva' ? String(readCell(row, ['Tipo Baja', 'Tipo de Baja', 'tipoBaja'], existingCase.tipoBaja || 'NO CONTINUA')).trim() : null,
+            detalleBaja: estado === 'Baja definitiva' ? (String(detalleBaja).trim() || existingCase.detalleBaja || BAJA_SUBCATEGORIES[0]) : null
+          };
+        };
+
         reader.onload = async (event) => {
            try {
               const data = new Uint8Array(event.target.result);
               const workbook = window.XLSX.read(data, {type: 'array'});
               const firstSheetName = workbook.SheetNames[0];
               const worksheet = workbook.Sheets[firstSheetName];
-              const json = window.XLSX.utils.sheet_to_json(worksheet);
+              const json = window.XLSX.utils.sheet_to_json(worksheet, { defval: '' });
 
               const casesRef = collection(db, 'casos');
               let count = cases.length;
               let importedCount = 0;
+              let replacedCount = 0;
               let skippedCount = 0;
+              const existingByCaseNumber = new Map(cases.map(c => [String(c.caseNumber || '').trim(), c]).filter(([k]) => k));
+              const existingByMatricula = new Map(cases.map(c => [String(c.matricula || '').trim(), c]).filter(([k]) => k));
               
-              const existingMatriculas = new Set(cases.map(c => String(c.matricula || '').trim()).filter(m => m !== ''));
-              
-              for(let row of json) {
-                  const mat = String(row['Matrícula'] || '').trim();
-                  
-                  if (mat && existingMatriculas.has(mat)) {
-                      skippedCount++;
-                      continue;
+              for (let row of json) {
+                  const rowCaseId = String(row['ID Caso'] || row['Id Caso'] || row['Nº Caso'] || row['N° Caso'] || row['Caso'] || row['caseNumber'] || '').trim();
+                  const mat = String(row['Matrícula'] || row['Matricula'] || row['matricula'] || '').trim();
+                  let existing = rowCaseId ? existingByCaseNumber.get(rowCaseId) : null;
+                  if (!existing && mat) existing = existingByMatricula.get(mat);
+
+                  if (existing) {
+                    const updatedCase = buildCaseFromRow(row, existing, existing.caseNumber);
+                    const { id, ...caseData } = updatedCase;
+                    Object.keys(caseData).forEach(key => { if (caseData[key] === undefined) delete caseData[key]; });
+                    await updateDoc(doc(db, 'casos', existing.id), caseData);
+                    replacedCount++;
+                    continue;
                   }
-                  
-                  if (mat) {
-                      existingMatriculas.add(mat);
+
+                  if (!mat && !rowCaseId) {
+                    skippedCount++;
+                    continue;
                   }
 
                   count++;
-                  const caseNumber = row['Nº Caso'] || `CASO-${String(count).padStart(3, '0')}`;
-                  
-                  const newCase = {
-                      caseNumber: caseNumber,
-                      asesor: row['Asesor'] || advisors[0]?.name || 'Lucas',
-                      matricula: mat,
-                      nombre: row['Nombre'] || 'Alumno Importado',
-                      telefono: String(row['Teléfono'] || ''),
-                      carrera: row['Carrera'] || CAREERS[0].name,
-                      modalidad: row['Modalidad'] || 'Presencial',
-                      nivelCaso: row['Nivel de Caso'] || NIVELES_CASO[0],
-                      estado: row['Estado'] && row['Estado'].includes('Baja') ? 'Baja definitiva' : (row['Estado'] || 'Nuevo caso'),
-                      subestado: row['Subestado'] || SUB_STATUSES[0],
-                      motivo: row['Motivo Principal'] || REASONS[0],
-                      empresaAmiga: row['Empresa Amiga'] === 'Sí',
-                      nombreEmpresa: row['Nombre Empresa'] !== '-' ? (row['Nombre Empresa'] || '') : '',
-                      observacion: row['Historial de Observaciones'] || 'Caso importado desde Excel externo.', 
-                      fecha: row['Fecha de Registro'] || new Date().toISOString().split('T')[0],
-                      tipoAlumno: []
-                  }
+                  const caseNumber = rowCaseId || `CASO-${String(count).padStart(3, '0')}`;
+                  const newCase = buildCaseFromRow(row, {}, caseNumber);
                   await addDoc(casesRef, newCase);
                   importedCount++;
               }
               
-              let alertMsg = `¡Se importaron ${importedCount} casos exitosamente!`;
-              if (skippedCount > 0) alertMsg += `\nSe omitieron ${skippedCount} casos porque la matrícula ya existía en el sistema.`;
+              let alertMsg = `Importación finalizada.\nNuevos casos: ${importedCount}.\nCasos reemplazados/actualizados: ${replacedCount}.`;
+              if (skippedCount > 0) alertMsg += `\nFilas omitidas por no tener matrícula ni ID de caso: ${skippedCount}.`;
               alert(alertMsg);
 
            } catch(err) {
@@ -508,7 +622,8 @@
         );
       }
 
-      const activeCases = cases.filter(c => c.estado !== 'Retenido' && c.estado !== 'Baja definitiva');
+      const pendingDiscountCases = cases.filter(c => c.estado === 'Pendiente de cargar descuento');
+      const activeCases = cases.filter(c => c.estado !== 'Retenido' && c.estado !== 'Baja definitiva' && c.estado !== 'Pendiente de cargar descuento');
       const resolvedCases = cases.filter(c => c.estado === 'Retenido' || c.estado === 'Baja definitiva');
 
       const MAX_DB_USAGE = 5000;
@@ -662,6 +777,10 @@
                 <Users size={20} /> Casos Activos
                 {activeCases.length > 0 && <span className="ml-auto bg-indigo-800 text-xs px-2 py-0.5 rounded-full">{activeCases.length}</span>}
               </button>
+              <button onClick={() => navigateTo('pendingDiscount')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${currentView === 'pendingDiscount' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'}`}>
+                <Clock size={20} /> Pend. descuento
+                {pendingDiscountCases.length > 0 && <span className="ml-auto bg-amber-700 text-xs px-2 py-0.5 rounded-full">{pendingDiscountCases.length}</span>}
+              </button>
               <button onClick={() => navigateTo('resolved')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${currentView === 'resolved' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'}`}>
                 <CheckCircle2 size={20} /> Resueltos
                 {resolvedCases.length > 0 && <span className="ml-auto bg-slate-800 text-xs px-2 py-0.5 rounded-full">{resolvedCases.length}</span>}
@@ -728,6 +847,7 @@
                 <h2 className="text-xl md:text-2xl font-semibold text-slate-800 capitalize truncate">
                   {currentView === 'dashboard' && 'Panel de Control Global'}
                   {currentView === 'list' && 'Directorio de Casos Activos'}
+                  {currentView === 'pendingDiscount' && 'Pendientes de Cargar Descuento'}
                   {currentView === 'resolved' && 'Historial de Casos Resueltos'}
                   {currentView === 'new' && 'Registrar Nuevo Caso'}
                   {currentView === 'detail' && 'Detalle y Seguimiento del Caso'}
@@ -738,6 +858,7 @@
             <div className="p-4 md:p-8 relative z-10">
               {currentView === 'dashboard' && <Dashboard cases={cases} advisors={advisors} onRenameBaja={handleRenameBaja} />}
               {currentView === 'list' && <CaseList cases={activeCases} allCases={cases} advisors={advisors} onSelect={(id) => navigateTo('detail', id)} title="Casos Activos (En Gestión)" emptyMsg="No hay casos activos. Todos los registros están resueltos o no hay datos." />}
+              {currentView === 'pendingDiscount' && <CaseList cases={pendingDiscountCases} allCases={cases} advisors={advisors} onSelect={(id) => navigateTo('detail', id)} title="Pendientes de Cargar Descuento" emptyMsg="No hay casos pendientes de cargar descuento." />}
               {currentView === 'resolved' && <CaseList cases={resolvedCases} allCases={cases} advisors={advisors} onSelect={(id) => navigateTo('detail', id)} title="Casos Cerrados (Retenidos y Bajas)" emptyMsg="Aún no hay casos resueltos." />}
               {currentView === 'new' && (
                 <CaseForm 
@@ -753,7 +874,8 @@
                   caseData={selectedCase} 
                   advisors={advisors}
                   onBack={() => {
-                    if (selectedCase.estado === 'Retenido' || selectedCase.estado === 'Baja definitiva') navigateTo('resolved');
+                    if (selectedCase.estado === 'Pendiente de cargar descuento') navigateTo('pendingDiscount');
+                    else if (selectedCase.estado === 'Retenido' || selectedCase.estado === 'Baja definitiva') navigateTo('resolved');
                     else navigateTo('list');
                   }} 
                   onUpdate={async (updatedCase) => {
@@ -798,7 +920,7 @@
           if (filterStatus && c.estado !== filterStatus) return false;
           if (filterSubstatus && c.subestado !== filterSubstatus) return false;
           if (filterModalidad && c.modalidad !== filterModalidad) return false;
-          if (filterNivel && c.nivelCaso !== filterNivel) return false;
+          if (filterNivel && normalizeNivelCaso(c.nivelCaso) !== filterNivel) return false;
           if (filterAsesor && c.asesor !== filterAsesor) return false;
           return true;
         });
@@ -872,7 +994,7 @@
               </select>
               <select className="flex-1 min-w-[140px] bg-white/60 backdrop-blur-sm border border-white/50 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium" value={filterNivel} onChange={e => setFilterNivel(e.target.value)}>
                 <option value="">Todos los Niveles</option>
-                {NIVELES_CASO.map(n => <option key={n} value={n.split('—')[0].trim()}>{n.split('—')[0].trim()}</option>)}
+                {NIVELES_CASO.map(n => <option key={n} value={n}>{n.split('—')[0].trim()}</option>)}
               </select>
               <select className="flex-1 min-w-[140px] bg-white/60 backdrop-blur-sm border border-white/50 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium" value={filterReason} onChange={e => setFilterReason(e.target.value)}>
                 <option value="">Todos los Motivos</option>
@@ -1264,30 +1386,92 @@
       let styles = "bg-slate-100 text-slate-700 border-slate-200";
       if (status === 'Retenido') styles = "bg-emerald-200 text-emerald-900 border-emerald-400 shadow-sm";
       if (status === 'Baja definitiva') styles = "bg-red-200 text-red-900 border-red-400 shadow-sm";
+      if (status === 'A la espera de ser contactado') styles = "bg-orange-100 text-orange-800 border-orange-200";
       if (status === 'Nuevo caso') styles = "bg-sky-100 text-sky-800 border-sky-200";
       if (status === 'En seguimiento') styles = "bg-indigo-100 text-indigo-800 border-indigo-200";
       if (status === 'Esperando respuesta') styles = "bg-amber-100 text-amber-800 border-amber-200";
+      if (status === 'Pendiente de cargar descuento') styles = "bg-yellow-200 text-yellow-900 border-yellow-400 shadow-sm";
 
       return <span className={`px-2.5 py-1.5 rounded-md text-[11px] uppercase tracking-wider font-bold shadow-sm border ${styles}`}>{status}</span>;
     }
 
     // --- CASE FORM COMPONENT ---
     function CaseForm({ onSave, onCancel, cases = [], advisors, onOpenCase }) {
-      const initialAsesor = advisors.length > 0 ? advisors[0].name : '';
+      const initialAsesor = '';
       const [formData, setFormData] = useState({
-        matricula: '', nombre: '', telefono: '', carrera: CAREERS[0].name, modalidad: CAREERS[0].modalities[0], tipoAlumno: [], nivelCaso: NIVELES_CASO[0], estado: 'Nuevo caso', subestado: SUB_STATUSES[0], motivo: REASONS[0], empresaAmiga: false, nombreEmpresa: '', observacion: '', tipoBaja: 'NO CONTINUA', detalleBaja: BAJA_SUBCATEGORIES[0], asesor: initialAsesor
+        matricula: '', nombre: '', telefono: '', carrera: CAREERS[0].name, modalidad: CAREERS[0].modalities[0], tipoAlumno: [], nivelCaso: NIVELES_CASO[0], estado: 'A la espera de ser contactado', subestado: SUB_STATUSES[0], motivo: REASONS[0], empresaAmiga: false, nombreEmpresa: '', observacion: '', tipoBaja: 'NO CONTINUA', detalleBaja: BAJA_SUBCATEGORIES[0], asesor: initialAsesor
       });
+
+      const [pasteText, setPasteText] = useState('');
+      const [pastedImage, setPastedImage] = useState(null);
+      const [isReadingCapture, setIsReadingCapture] = useState(false);
+
+      const handlePasteCapture = (e) => {
+        const text = e.clipboardData?.getData('text/plain');
+        if (text) setPasteText(prev => `${prev}${prev ? '\n' : ''}${text}`);
+        const items = Array.from(e.clipboardData?.items || []);
+        const imageItem = items.find(item => item.type && item.type.startsWith('image/'));
+        if (imageItem) {
+          const file = imageItem.getAsFile();
+          if (file) setPastedImage(URL.createObjectURL(file));
+        }
+      };
+
+      const handleCaptureFile = (e) => {
+        const file = e.target.files?.[0];
+        if (file) setPastedImage(URL.createObjectURL(file));
+      };
+
+      const applyParsedData = (parsed) => {
+        setFormData(prev => {
+          const next = { ...prev };
+          if (parsed.matricula) next.matricula = parsed.matricula;
+          if (parsed.nombre) next.nombre = parsed.nombre;
+          if (parsed.telefono) next.telefono = parsed.telefono;
+          if (parsed.carrera) {
+            next.carrera = parsed.carrera;
+            const careerObj = CAREERS.find(c => c.name === parsed.carrera);
+            if (careerObj && (!parsed.modalidad || !careerObj.modalities.includes(parsed.modalidad))) {
+              next.modalidad = careerObj.modalities[0];
+            }
+          }
+          if (parsed.modalidad) next.modalidad = parsed.modalidad;
+          if (parsed.observacion && !next.observacion) next.observacion = parsed.observacion;
+          return next;
+        });
+      };
+
+      const handleReadCapture = async () => {
+        setIsReadingCapture(true);
+        try {
+          let text = pasteText || '';
+          if (pastedImage && window.Tesseract) {
+            const result = await window.Tesseract.recognize(pastedImage, 'spa+eng');
+            text = `${text}\n${result?.data?.text || ''}`;
+            setPasteText(text.trim());
+          }
+          const parsed = parseStudentDataFromText(text);
+          applyParsedData(parsed);
+        } catch (err) {
+          console.error('Error leyendo captura:', err);
+          alert('No se pudo leer la captura automáticamente. Podés pegar el texto o cargar los campos manualmente.');
+        } finally {
+          setIsReadingCapture(false);
+        }
+      };
 
       const inputMatricula = formData.matricula ? String(formData.matricula).trim() : '';
       const duplicateCase = inputMatricula ? cases.find(c => {
          const cMat = c.matricula ? String(c.matricula).trim() : '';
          return cMat === inputMatricula;
       }) : null;
-      const isDuplicate = !!duplicateCase;
+      const [isSaving, setIsSaving] = useState(false);
+      const isDuplicate = !!duplicateCase && !isSaving;
 
-      const handleSubmit = (e) => {
+      const handleSubmit = async (e) => {
         e.preventDefault();
         if (isDuplicate) return;
+        setIsSaving(true);
 
         const dataToSave = {...formData};
         if (dataToSave.estado === 'Baja definitiva' || dataToSave.estado === 'Retenido') {
@@ -1303,9 +1487,17 @@
           dataToSave.tipoBaja = null;
         }
 
-        if (dataToSave.asesor === 'Otro') {
-          dataToSave.asesor = (dataToSave.asesorOtro || '').trim() || 'Sin especificar';
+        if (!dataToSave.asesor) {
+          dataToSave.asesor = ASESOR_PENDIENTE;
+          dataToSave.estado = 'A la espera de ser contactado';
+          dataToSave.subestado = 'Solicitud de baja';
+        } else if (dataToSave.asesor === 'Otro') {
+          dataToSave.asesor = (dataToSave.asesorOtro || '').trim() || ASESOR_PENDIENTE;
+          if (dataToSave.asesor === ASESOR_PENDIENTE) dataToSave.estado = 'A la espera de ser contactado';
         }
+
+        dataToSave.nivelCaso = normalizeNivelCaso(dataToSave.nivelCaso) || NIVELES_CASO[0];
+        dataToSave.estado = normalizeEstadoCaso(dataToSave.estado);
         
         delete dataToSave.asesorOtro;
         delete dataToSave.detalleBajaOtro;
@@ -1314,7 +1506,11 @@
           if (dataToSave[key] === undefined) delete dataToSave[key];
         });
 
-        onSave(dataToSave);
+        try {
+          await onSave(dataToSave);
+        } finally {
+          setTimeout(() => setIsSaving(false), 600);
+        }
       };
 
       const handleCareerChange = (e) => {
@@ -1357,6 +1553,7 @@
                 <select className="w-full sm:w-1/2 border border-slate-300 rounded-xl p-2.5 focus:ring-2 outline-none transition-shadow bg-white"
                   style={{ '--tw-ring-color': careerInfo.hex }}
                   value={formData.asesor} onChange={e => setFormData({...formData, asesor: e.target.value})}>
+                  <option value="">A la espera de ser contactado</option>
                   {advisors.map(a => <option key={a.name} value={a.name}>{a.name}</option>)}
                   <option value="Otro">Otro (Ingresar manualmente)</option>
                 </select>
@@ -1365,6 +1562,35 @@
                     style={{ '--tw-ring-color': careerInfo.hex }}
                     value={formData.asesorOtro || ''} onChange={e => setFormData({...formData, asesorOtro: e.target.value})} />
                 )}
+              </div>
+            </div>
+
+            <div className="bg-indigo-50/60 p-4 rounded-xl border border-indigo-100 mb-6">
+              <label className="block text-sm font-bold text-indigo-900 mb-2">Carga rápida desde captura o texto</label>
+              <div
+                onPaste={handlePasteCapture}
+                tabIndex={0}
+                className="bg-white border-2 border-dashed border-indigo-200 rounded-xl p-4 outline-none focus:ring-2 focus:ring-indigo-400"
+              >
+                <p className="text-xs font-semibold text-slate-500 mb-2">Pegá acá una captura de FUNIC o pegá el texto copiado. Luego presioná “Cargar datos”.</p>
+                <textarea
+                  rows={4}
+                  className="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-300"
+                  placeholder="Pegá la captura o el texto acá..."
+                  value={pasteText}
+                  onPaste={handlePasteCapture}
+                  onChange={e => setPasteText(e.target.value)}
+                />
+                <div className="mt-3 flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+                  <label className="text-xs font-bold text-indigo-700 bg-white border border-indigo-200 rounded-lg px-3 py-2 cursor-pointer hover:bg-indigo-50">
+                    Subir imagen
+                    <input type="file" accept="image/*" className="hidden" onChange={handleCaptureFile} />
+                  </label>
+                  <button type="button" onClick={handleReadCapture} disabled={isReadingCapture || (!pasteText.trim() && !pastedImage)} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 disabled:opacity-50">
+                    {isReadingCapture ? 'Leyendo captura...' : 'Cargar datos'}
+                  </button>
+                </div>
+                {pastedImage && <img src={pastedImage} alt="Captura pegada" className="mt-3 max-h-48 rounded-lg border border-indigo-100 shadow-sm" />}
               </div>
             </div>
 
@@ -1440,7 +1666,7 @@
                 <select className="w-full border border-slate-300 rounded-xl p-2.5 focus:ring-2 outline-none transition-shadow"
                   style={{ '--tw-ring-color': careerInfo.hex }}
                   value={formData.nivelCaso} onChange={e => setFormData({...formData, nivelCaso: e.target.value})}>
-                  {NIVELES_CASO.map(n => <option key={n} value={n.split('—')[0].trim()}>{n.split('—')[0].trim()}</option>)}
+                  {NIVELES_CASO.map(n => <option key={n} value={n}>{n.split('—')[0].trim()}</option>)}
                 </select>
               </div>
               <div>
@@ -1539,11 +1765,11 @@
               </button>
               <button 
                 type="submit" 
-                disabled={isDuplicate}
+                disabled={isDuplicate || isSaving}
                 className="px-5 py-2.5 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-all hover:opacity-90 shadow-sm w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{ backgroundColor: isDuplicate ? '#94a3b8' : careerInfo.hex }}
               >
-                <Save size={18} /> Guardar Caso
+                <Save size={18} /> {isSaving ? 'Guardando...' : 'Guardar Caso'}
               </button>
             </div>
           </form>
@@ -1870,9 +2096,10 @@
                     <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Asesor Asignado</p>
                     <select 
                       className="w-full border rounded-lg p-2 text-sm font-bold outline-none focus:ring-2 shadow-sm bg-slate-50 text-slate-700"
-                      value={localData.asesor || ''} 
+                      value={localData.asesor || ASESOR_PENDIENTE} 
                       onChange={e => handleSelectChange('asesor', e.target.value)}
                     >
+                      <option value={ASESOR_PENDIENTE}>A la espera de ser contactado</option>
                       {advisors.map(a => <option key={a.name} value={a.name}>{a.name}</option>)}
                     </select>
                     <div 
@@ -2030,7 +2257,7 @@
                       </button>
                     ))}
                  </div>
-                 <p className="text-[10px] text-slate-400 mt-3 italic text-center leading-tight">Nota: Marcar como "Retenido" o "Baja" cerrará y enviará el caso a Casos Resueltos automáticamente.</p>
+                 <p className="text-[10px] text-slate-400 mt-3 italic text-center leading-tight">Nota: “Pendiente de cargar descuento” lo envía a su pestaña. Al marcar “Retenido”, pasa a Resueltos.</p>
               </div>
 
             </div>
