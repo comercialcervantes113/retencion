@@ -106,7 +106,7 @@
       'Distancia': 'Contenidos en autogestión/Teams (grabados). Examen sincrónico. Tutorías y 3 encuentros opcionales. Chat con respuesta en 24hs.'
     };
 
-    const STATUSES = ['A la espera de ser contactado', 'Nuevo caso', 'En seguimiento', 'Esperando respuesta', 'Pendiente de cargar descuento', 'Retenido', 'Baja definitiva'];
+    const STATUSES = ['Pendiente de ser contactado', 'Nuevo caso', 'En seguimiento', 'Esperando respuesta', 'Pendiente de cargar descuento', 'Retenido', 'Baja definitiva'];
     const SUB_STATUSES = [
       'Solicitud de baja', 
       'Solicitud de postergar su inicio', 
@@ -128,7 +128,7 @@
       'Nivel 4 — Baja No Económica'
     ];
 
-    const ASESOR_PENDIENTE = 'A la espera de ser contactado';
+    const ASESOR_PENDIENTE = 'Pendiente de ser contactado';
 
     const normalizeNivelCaso = (nivel) => {
       const raw = String(nivel || '').trim();
@@ -141,7 +141,7 @@
       const raw = String(estado || '').trim();
       if (!raw) return 'Nuevo caso';
       if (raw.toLowerCase().includes('pendiente') && raw.toLowerCase().includes('descuento')) return 'Pendiente de cargar descuento';
-      if (raw.toLowerCase().includes('espera') && raw.toLowerCase().includes('contact')) return 'A la espera de ser contactado';
+      if ((raw.toLowerCase().includes('pendiente') || raw.toLowerCase().includes('espera')) && raw.toLowerCase().includes('contact')) return 'Pendiente de ser contactado';
       if (raw.includes('Baja')) return 'Baja definitiva';
       return STATUSES.includes(raw) ? raw : raw;
     };
@@ -316,10 +316,15 @@
 
         const casesRef = collection(db, 'casos');
         const unsubscribe = onSnapshot(casesRef, (snapshot) => {
-          const data = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          }));
+          const data = snapshot.docs.map(doc => {
+            const rawData = doc.data();
+            return {
+              id: doc.id,
+              ...rawData,
+              estado: normalizeEstadoCaso(rawData.estado),
+              nivelCaso: normalizeNivelCaso(rawData.nivelCaso) || rawData.nivelCaso
+            };
+          });
           
           data.sort((a, b) => {
             const numA = parseInt((a.caseNumber || '').split('-')[1] || '0');
@@ -413,7 +418,8 @@
           const deletedCase = cases.find(c => c.id === id);
           if (!deletedCase) return;
           
-          if (deletedCase.estado === 'Pendiente de cargar descuento') navigateTo('pendingDiscount');
+          if (normalizeEstadoCaso(deletedCase.estado) === 'Pendiente de ser contactado') navigateTo('pendingContact');
+          else if (normalizeEstadoCaso(deletedCase.estado) === 'Pendiente de cargar descuento') navigateTo('pendingDiscount');
           else if (deletedCase.estado === 'Retenido' || deletedCase.estado === 'Baja definitiva') navigateTo('resolved');
           else navigateTo('list');
 
@@ -622,8 +628,9 @@
         );
       }
 
-      const pendingDiscountCases = cases.filter(c => c.estado === 'Pendiente de cargar descuento');
-      const activeCases = cases.filter(c => c.estado !== 'Retenido' && c.estado !== 'Baja definitiva' && c.estado !== 'Pendiente de cargar descuento');
+      const pendingContactCases = cases.filter(c => normalizeEstadoCaso(c.estado) === 'Pendiente de ser contactado');
+      const pendingDiscountCases = cases.filter(c => normalizeEstadoCaso(c.estado) === 'Pendiente de cargar descuento');
+      const activeCases = cases.filter(c => !['Retenido', 'Baja definitiva', 'Pendiente de cargar descuento', 'Pendiente de ser contactado'].includes(normalizeEstadoCaso(c.estado)));
       const resolvedCases = cases.filter(c => c.estado === 'Retenido' || c.estado === 'Baja definitiva');
 
       const MAX_DB_USAGE = 5000;
@@ -777,6 +784,10 @@
                 <Users size={20} /> Casos Activos
                 {activeCases.length > 0 && <span className="ml-auto bg-indigo-800 text-xs px-2 py-0.5 rounded-full">{activeCases.length}</span>}
               </button>
+              <button onClick={() => navigateTo('pendingContact')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${currentView === 'pendingContact' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'}`}>
+                <Phone size={20} /> Pendiente de ser contactado
+                {pendingContactCases.length > 0 && <span className="ml-auto bg-sky-700 text-xs px-2 py-0.5 rounded-full">{pendingContactCases.length}</span>}
+              </button>
               <button onClick={() => navigateTo('pendingDiscount')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${currentView === 'pendingDiscount' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'}`}>
                 <Clock size={20} /> Pend. descuento
                 {pendingDiscountCases.length > 0 && <span className="ml-auto bg-amber-700 text-xs px-2 py-0.5 rounded-full">{pendingDiscountCases.length}</span>}
@@ -847,6 +858,7 @@
                 <h2 className="text-xl md:text-2xl font-semibold text-slate-800 capitalize truncate">
                   {currentView === 'dashboard' && 'Panel de Control Global'}
                   {currentView === 'list' && 'Directorio de Casos Activos'}
+                  {currentView === 'pendingContact' && 'Pendiente de ser contactado'}
                   {currentView === 'pendingDiscount' && 'Pendientes de Cargar Descuento'}
                   {currentView === 'resolved' && 'Historial de Casos Resueltos'}
                   {currentView === 'new' && 'Registrar Nuevo Caso'}
@@ -858,6 +870,7 @@
             <div className="p-4 md:p-8 relative z-10">
               {currentView === 'dashboard' && <Dashboard cases={cases} advisors={advisors} onRenameBaja={handleRenameBaja} />}
               {currentView === 'list' && <CaseList cases={activeCases} allCases={cases} advisors={advisors} onSelect={(id) => navigateTo('detail', id)} title="Casos Activos (En Gestión)" emptyMsg="No hay casos activos. Todos los registros están resueltos o no hay datos." />}
+              {currentView === 'pendingContact' && <CaseList cases={pendingContactCases} allCases={cases} advisors={advisors} onSelect={(id) => navigateTo('detail', id)} title="Pendiente de ser contactado" emptyMsg="No hay casos pendientes de ser contactados." />}
               {currentView === 'pendingDiscount' && <CaseList cases={pendingDiscountCases} allCases={cases} advisors={advisors} onSelect={(id) => navigateTo('detail', id)} title="Pendientes de Cargar Descuento" emptyMsg="No hay casos pendientes de cargar descuento." />}
               {currentView === 'resolved' && <CaseList cases={resolvedCases} allCases={cases} advisors={advisors} onSelect={(id) => navigateTo('detail', id)} title="Casos Cerrados (Retenidos y Bajas)" emptyMsg="Aún no hay casos resueltos." />}
               {currentView === 'new' && (
@@ -874,7 +887,8 @@
                   caseData={selectedCase} 
                   advisors={advisors}
                   onBack={() => {
-                    if (selectedCase.estado === 'Pendiente de cargar descuento') navigateTo('pendingDiscount');
+                    if (normalizeEstadoCaso(selectedCase.estado) === 'Pendiente de ser contactado') navigateTo('pendingContact');
+                    else if (normalizeEstadoCaso(selectedCase.estado) === 'Pendiente de cargar descuento') navigateTo('pendingDiscount');
                     else if (selectedCase.estado === 'Retenido' || selectedCase.estado === 'Baja definitiva') navigateTo('resolved');
                     else navigateTo('list');
                   }} 
@@ -1386,7 +1400,8 @@
       let styles = "bg-slate-100 text-slate-700 border-slate-200";
       if (status === 'Retenido') styles = "bg-emerald-200 text-emerald-900 border-emerald-400 shadow-sm";
       if (status === 'Baja definitiva') styles = "bg-red-200 text-red-900 border-red-400 shadow-sm";
-      if (status === 'A la espera de ser contactado') styles = "bg-orange-100 text-orange-800 border-orange-200";
+      if (status === 'Pendiente de ser contactado') styles = "bg-orange-100 text-orange-800 border-orange-200";
+      if (status === 'Pendiente de ser contactado') styles = "bg-cyan-100 text-cyan-900 border-cyan-300";
       if (status === 'Nuevo caso') styles = "bg-sky-100 text-sky-800 border-sky-200";
       if (status === 'En seguimiento') styles = "bg-indigo-100 text-indigo-800 border-indigo-200";
       if (status === 'Esperando respuesta') styles = "bg-amber-100 text-amber-800 border-amber-200";
@@ -1399,7 +1414,7 @@
     function CaseForm({ onSave, onCancel, cases = [], advisors, onOpenCase }) {
       const initialAsesor = '';
       const [formData, setFormData] = useState({
-        matricula: '', nombre: '', telefono: '', carrera: CAREERS[0].name, modalidad: CAREERS[0].modalities[0], tipoAlumno: [], nivelCaso: NIVELES_CASO[0], estado: 'A la espera de ser contactado', subestado: SUB_STATUSES[0], motivo: REASONS[0], empresaAmiga: false, nombreEmpresa: '', observacion: '', tipoBaja: 'NO CONTINUA', detalleBaja: BAJA_SUBCATEGORIES[0], asesor: initialAsesor
+        matricula: '', nombre: '', telefono: '', carrera: CAREERS[0].name, modalidad: CAREERS[0].modalities[0], tipoAlumno: [], nivelCaso: NIVELES_CASO[0], estado: 'Pendiente de ser contactado', subestado: SUB_STATUSES[0], motivo: REASONS[0], empresaAmiga: false, nombreEmpresa: '', observacion: '', tipoBaja: 'NO CONTINUA', detalleBaja: BAJA_SUBCATEGORIES[0], asesor: initialAsesor
       });
 
       const [pasteText, setPasteText] = useState('');
@@ -1489,11 +1504,11 @@
 
         if (!dataToSave.asesor) {
           dataToSave.asesor = ASESOR_PENDIENTE;
-          dataToSave.estado = 'A la espera de ser contactado';
+          dataToSave.estado = 'Pendiente de ser contactado';
           dataToSave.subestado = 'Solicitud de baja';
         } else if (dataToSave.asesor === 'Otro') {
           dataToSave.asesor = (dataToSave.asesorOtro || '').trim() || ASESOR_PENDIENTE;
-          if (dataToSave.asesor === ASESOR_PENDIENTE) dataToSave.estado = 'A la espera de ser contactado';
+          if (dataToSave.asesor === ASESOR_PENDIENTE) dataToSave.estado = 'Pendiente de ser contactado';
         }
 
         dataToSave.nivelCaso = normalizeNivelCaso(dataToSave.nivelCaso) || NIVELES_CASO[0];
@@ -1553,7 +1568,7 @@
                 <select className="w-full sm:w-1/2 border border-slate-300 rounded-xl p-2.5 focus:ring-2 outline-none transition-shadow bg-white"
                   style={{ '--tw-ring-color': careerInfo.hex }}
                   value={formData.asesor} onChange={e => setFormData({...formData, asesor: e.target.value})}>
-                  <option value="">A la espera de ser contactado</option>
+                  <option value="">Pendiente de ser contactado</option>
                   {advisors.map(a => <option key={a.name} value={a.name}>{a.name}</option>)}
                   <option value="Otro">Otro (Ingresar manualmente)</option>
                 </select>
@@ -2099,7 +2114,7 @@
                       value={localData.asesor || ASESOR_PENDIENTE} 
                       onChange={e => handleSelectChange('asesor', e.target.value)}
                     >
-                      <option value={ASESOR_PENDIENTE}>A la espera de ser contactado</option>
+                      <option value={ASESOR_PENDIENTE}>Pendiente de ser contactado</option>
                       {advisors.map(a => <option key={a.name} value={a.name}>{a.name}</option>)}
                     </select>
                     <div 
