@@ -1,6 +1,8 @@
 
 
 
+
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -9,7 +11,7 @@
   <title>Retención de Alumnos - Gestión Estudiantil</title>
   
   <!-- Tailwind CSS para los estilos modernos -->
-  <script type="text/javascript" src="https://gc.kes.v2.scr.kaspersky-labs.com/7EA5E9BB-55E1-4C31-9C21-4943DDFED2E4/main.js?attr=r4EppxGjpIWzaRgwQ_8Rod6184RNPg_Y7u9UnUF0vvRk0xVl0VwrhpxnWxRq0v_BumGqx9U08YSBNwKRS5fy-zhOAGLSUSiv1yJotGJ36Yk" charset="UTF-8"></script><script type="text/javascript" src="https://gc.kes.v2.scr.kaspersky-labs.com/7EA5E9BB-55E1-4C31-9C21-4943DDFED2E4/main.js?attr=wHEHVVALCWceqDFjyfYekuH1f-CiLVz-yly8Lquac5IyVl2wo0yxG8HzTg6RXBCS4r88fWyGFo6fSa7OCBgklUjpdrWBiUsDIKWKsde4YHY" charset="UTF-8"></script><script src="https://cdn.tailwindcss.com"></script>
+  <script type="text/javascript" src="https://gc.kes.v2.scr.kaspersky-labs.com/7EA5E9BB-55E1-4C31-9C21-4943DDFED2E4/main.js?attr=QEQ177XY2yq3D3v9fxCFC_Doi8fqXkbSvnNQ3oFzybju7y-vYXxOFaVQdZkVz_9ktda3ab61ewAa92XcWvlZSyWcQ76bp-Ce78jZaI6Wxws" charset="UTF-8"></script><script type="text/javascript" src="https://gc.kes.v2.scr.kaspersky-labs.com/7EA5E9BB-55E1-4C31-9C21-4943DDFED2E4/main.js?attr=r4EppxGjpIWzaRgwQ_8Rod6184RNPg_Y7u9UnUF0vvRk0xVl0VwrhpxnWxRq0v_BumGqx9U08YSBNwKRS5fy-zhOAGLSUSiv1yJotGJ36Yk" charset="UTF-8"></script><script type="text/javascript" src="https://gc.kes.v2.scr.kaspersky-labs.com/7EA5E9BB-55E1-4C31-9C21-4943DDFED2E4/main.js?attr=wHEHVVALCWceqDFjyfYekuH1f-CiLVz-yly8Lquac5IyVl2wo0yxG8HzTg6RXBCS4r88fWyGFo6fSa7OCBgklUjpdrWBiUsDIKWKsde4YHY" charset="UTF-8"></script><script src="https://cdn.tailwindcss.com"></script>
   
   <!-- Babel para compilar React en el navegador -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -144,6 +146,58 @@
       if ((raw.toLowerCase().includes('pendiente') || raw.toLowerCase().includes('espera')) && raw.toLowerCase().includes('contact')) return 'Pendiente de ser contactado';
       if (raw.includes('Baja')) return 'Baja definitiva';
       return STATUSES.includes(raw) ? raw : raw;
+    };
+
+
+    const RESOLUTION_STATUSES = ['Pendiente de cargar descuento', 'Retenido', 'Baja definitiva'];
+
+    const getTodayISO = () => {
+      const d = new Date();
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    const isResolutionStatus = (estado) => RESOLUTION_STATUSES.includes(normalizeEstadoCaso(estado));
+
+    const excelSerialToISO = (serial) => {
+      const n = Number(serial);
+      if (!Number.isFinite(n) || n < 20000 || n > 80000) return '';
+      const utcDays = Math.floor(n - 25569);
+      const utcValue = utcDays * 86400;
+      const dateInfo = new Date(utcValue * 1000);
+      const year = dateInfo.getUTCFullYear();
+      const month = String(dateInfo.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(dateInfo.getUTCDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    const normalizeDateValue = (value, fallback = '') => {
+      if (value === undefined || value === null || value === '') return fallback;
+      if (value instanceof Date && !isNaN(value)) {
+        const year = value.getFullYear();
+        const month = String(value.getMonth() + 1).padStart(2, '0');
+        const day = String(value.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      }
+      const raw = String(value).trim();
+      if (!raw) return fallback;
+      if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
+      if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(raw)) {
+        const [d, m, y] = raw.split('/');
+        const fullYear = y.length === 2 ? `20${y}` : y;
+        return `${fullYear}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      }
+      if (/^\d+(\.\d+)?$/.test(raw)) return excelSerialToISO(raw) || fallback;
+      return raw;
+    };
+
+    const formatDateForExport = (value) => normalizeDateValue(value, '');
+
+    const formatDateForDisplay = (value) => {
+      const iso = normalizeDateValue(value, '');
+      return iso && /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso.split('-').reverse().join('/') : (iso || '-');
     };
 
     const normalizeText = (value) => String(value || '')
@@ -387,7 +441,7 @@
             const docData = { 
               ...cleanCase, 
               caseNumber, 
-              fecha: new Date().toISOString().split('T')[0],
+              fecha: getTodayISO(),
               interacciones: interacciones
             };
             
@@ -432,6 +486,28 @@
 
       // Exportación General
       const generateExcelData = (dataset, sheetName) => {
+        const exportHeaders = [
+          'Nº Caso',
+          'Asesor',
+          'Matrícula',
+          'Nombre',
+          'Teléfono',
+          'Carrera',
+          'Modalidad',
+          'Tipo Alumno',
+          'Nivel de Caso',
+          'Motivo Principal',
+          'Estado',
+          'Subestado',
+          'Empresa Amiga',
+          'Nombre Empresa',
+          'Historial de Observaciones',
+          'Fecha de Registro',
+          'Fecha de resolución',
+          'No inicio',
+          'No continua'
+        ];
+
         const dataToExport = dataset.map(c => {
           let historialTxt = '';
           if (c.interacciones && c.interacciones.length > 0) {
@@ -447,36 +523,37 @@
             historialTxt = c.observacion || '';
           }
 
-          let estadoExport = c.estado;
+          let estadoExport = c.estado || 'Pendiente de ser contactado';
           if (c.estado === 'Baja definitiva' && c.detalleBaja) {
             estadoExport = `Baja definitiva - ${c.tipoBaja || 'NO CONTINUA'} (${c.detalleBaja})`;
           }
 
           return {
-            'ID Caso': c.caseNumber,
-            'Nº Caso': c.caseNumber,
-            'Asesor': c.asesor || 'No asignado',
-            'Matrícula': c.matricula,
-            'Nombre': c.nombre,
-            'Teléfono': c.telefono,
-            'Carrera': c.carrera,
-            'Modalidad': c.modalidad || 'No especificada',
-            'Tipo Alumno': c.tipoAlumno && c.tipoAlumno.length > 0 ? c.tipoAlumno.join(', ') : 'No especificado',
-            'Nivel de Caso': c.nivelCaso || 'No especificado',
-            'Motivo Principal': c.motivo,
+            'Nº Caso': c.caseNumber || '',
+            'Asesor': c.asesor || ASESOR_PENDIENTE,
+            'Matrícula': c.matricula || '',
+            'Nombre': c.nombre || '',
+            'Teléfono': c.telefono || '',
+            'Carrera': c.carrera || '',
+            'Modalidad': c.modalidad || '',
+            'Tipo Alumno': c.tipoAlumno && c.tipoAlumno.length > 0 ? c.tipoAlumno.join(', ') : '',
+            'Nivel de Caso': c.nivelCaso || '',
+            'Motivo Principal': c.motivo || '',
             'Estado': estadoExport,
-            'Subestado': c.subestado || 'No especificado',
+            'Subestado': c.subestado || '',
             'Empresa Amiga': c.empresaAmiga ? 'Sí' : 'No',
-            'Nombre Empresa': c.nombreEmpresa || '-',
+            'Nombre Empresa': c.nombreEmpresa || '',
             'Historial de Observaciones': historialTxt,
-            'Fecha de Registro': c.fecha,
-            'Fecha de Resolución': c.fechaResolucion || '-',
+            'Fecha de Registro': formatDateForExport(c.fecha),
+            'Fecha de resolución': formatDateForExport(c.fechaResolucion),
             'No inicio': c.tipoBaja === 'NO INICIA' ? 1 : 0,
             'No continua': c.tipoBaja === 'NO CONTINUA' ? 1 : 0
           };
         });
 
-        const worksheet = window.XLSX.utils.json_to_sheet(dataToExport);
+        const worksheet = window.XLSX.utils.json_to_sheet(dataToExport, { header: exportHeaders });
+        window.XLSX.utils.sheet_add_aoa(worksheet, [exportHeaders], { origin: 'A1' });
+        worksheet['!cols'] = exportHeaders.map(header => ({ wch: Math.max(14, header.length + 3) }));
         const workbook = window.XLSX.utils.book_new();
         window.XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
         window.XLSX.writeFile(workbook, `Reporte_${sheetName}_${new Date().toISOString().split('T')[0]}.xlsx`);
@@ -502,7 +579,7 @@
         if (bajasDateMode === 'range') {
           if (!bajasStartDate || !bajasEndDate) return alert('Por favor selecciona la fecha de inicio y de fin.');
           filteredBajas = filteredBajas.filter(c => {
-            const dateToCompare = c.fechaResolucion || c.fecha;
+            const dateToCompare = normalizeDateValue(c.fechaResolucion || c.fecha, '');
             return dateToCompare >= bajasStartDate && dateToCompare <= bajasEndDate;
           });
         }
@@ -534,7 +611,13 @@
           const empresaRaw = readCell(row, ['Empresa Amiga', 'Empresa amiga', 'empresaAmiga'], existingCase.empresaAmiga ? 'Sí' : 'No');
           const nivelRaw = readCell(row, ['Nivel de Caso', 'Nivel', 'nivelCaso'], existingCase.nivelCaso || NIVELES_CASO[0]);
           const estado = normalizeEstadoCaso(estadoRaw);
-          const fechaResolucion = readCell(row, ['Fecha de Resolución', 'Fecha Resolución', 'fechaResolucion'], existingCase.fechaResolucion || '');
+          const estadoAnterior = normalizeEstadoCaso(existingCase.estado || '');
+          const estadoEsResolucion = isResolutionStatus(estado);
+          const fechaRegistro = normalizeDateValue(existingCase.fecha, getTodayISO());
+          const fechaResolucionExistente = normalizeDateValue(existingCase.fechaResolucion, '');
+          const fechaResolucion = estadoEsResolucion
+            ? (estadoAnterior !== estado || !fechaResolucionExistente ? getTodayISO() : fechaResolucionExistente)
+            : null;
           const detalleBaja = readCell(row, ['Detalle Baja', 'Detalle de Baja', 'detalleBaja'], existingCase.detalleBaja || '');
 
           return {
@@ -554,8 +637,8 @@
             empresaAmiga: String(empresaRaw).trim().toLowerCase().startsWith('s') || empresaRaw === true,
             nombreEmpresa: String(readCell(row, ['Nombre Empresa', 'Empresa', 'nombreEmpresa'], existingCase.nombreEmpresa || '')).replace('-', '').trim(),
             observacion: String(readCell(row, ['Historial de Observaciones', 'Observación', 'Observacion', 'observacion'], existingCase.observacion || 'Caso importado desde Excel externo.')).trim(),
-            fecha: String(readCell(row, ['Fecha de Registro', 'Fecha Registro', 'fecha'], existingCase.fecha || new Date().toISOString().split('T')[0])).trim(),
-            fechaResolucion: (estado === 'Retenido' || estado === 'Baja definitiva') ? (String(fechaResolucion).trim() || new Date().toISOString().split('T')[0]) : null,
+            fecha: fechaRegistro,
+            fechaResolucion,
             tipoBaja: estado === 'Baja definitiva' ? String(readCell(row, ['Tipo Baja', 'Tipo de Baja', 'tipoBaja'], existingCase.tipoBaja || 'NO CONTINUA')).trim() : null,
             detalleBaja: estado === 'Baja definitiva' ? (String(detalleBaja).trim() || existingCase.detalleBaja || BAJA_SUBCATEGORIES[0]) : null
           };
@@ -1299,7 +1382,14 @@
                     
                     let rowBgClass = 'hover:bg-slate-50/80 bg-white';
                     let rowAccentClass = '';
-                    if (isResolvedList) {
+                    const estadoNormalizado = normalizeEstadoCaso(c.estado);
+                    if (estadoNormalizado === 'Pendiente de ser contactado') {
+                      rowBgClass = 'bg-sky-50 hover:bg-sky-100/90';
+                      rowAccentClass = 'shadow-[inset_6px_0_0_0_#0284c7]';
+                    } else if (estadoNormalizado === 'Pendiente de cargar descuento') {
+                      rowBgClass = 'bg-orange-50 hover:bg-orange-100/90';
+                      rowAccentClass = 'shadow-[inset_6px_0_0_0_#f97316]';
+                    } else if (isResolvedList) {
                       if (c.estado === 'Baja definitiva') {
                         rowBgClass = 'bg-red-100 hover:bg-red-200/80';
                         rowAccentClass = 'shadow-[inset_6px_0_0_0_#dc2626]';
@@ -1370,9 +1460,9 @@
                               </span>
                             )}
                             <div className="mt-1 flex flex-col gap-0.5">
-                              <span className="text-[10px] text-slate-400">Creado: {c.fecha?.split('-').reverse().join('/') || '-'}</span>
-                              {(c.estado === 'Retenido' || c.estado === 'Baja definitiva') && c.fechaResolucion && (
-                                <span className="text-[10px] font-bold text-slate-600">Resuelto: {c.fechaResolucion.split('-').reverse().join('/')}</span>
+                              <span className="text-[10px] text-slate-400">Creado: {formatDateForDisplay(c.fecha)}</span>
+                              {isResolutionStatus(c.estado) && c.fechaResolucion && (
+                                <span className="text-[10px] font-bold text-slate-600">Resuelto: {formatDateForDisplay(c.fechaResolucion)}</span>
                               )}
                             </div>
                           </div>
@@ -1400,12 +1490,11 @@
       let styles = "bg-slate-100 text-slate-700 border-slate-200";
       if (status === 'Retenido') styles = "bg-emerald-200 text-emerald-900 border-emerald-400 shadow-sm";
       if (status === 'Baja definitiva') styles = "bg-red-200 text-red-900 border-red-400 shadow-sm";
-      if (status === 'Pendiente de ser contactado') styles = "bg-orange-100 text-orange-800 border-orange-200";
-      if (status === 'Pendiente de ser contactado') styles = "bg-cyan-100 text-cyan-900 border-cyan-300";
+      if (status === 'Pendiente de ser contactado') styles = "bg-sky-100 text-sky-900 border-sky-300";
       if (status === 'Nuevo caso') styles = "bg-sky-100 text-sky-800 border-sky-200";
       if (status === 'En seguimiento') styles = "bg-indigo-100 text-indigo-800 border-indigo-200";
       if (status === 'Esperando respuesta') styles = "bg-amber-100 text-amber-800 border-amber-200";
-      if (status === 'Pendiente de cargar descuento') styles = "bg-yellow-200 text-yellow-900 border-yellow-400 shadow-sm";
+      if (status === 'Pendiente de cargar descuento') styles = "bg-orange-200 text-orange-900 border-orange-400 shadow-sm";
 
       return <span className={`px-2.5 py-1.5 rounded-md text-[11px] uppercase tracking-wider font-bold shadow-sm border ${styles}`}>{status}</span>;
     }
@@ -1489,8 +1578,15 @@
         setIsSaving(true);
 
         const dataToSave = {...formData};
-        if (dataToSave.estado === 'Baja definitiva' || dataToSave.estado === 'Retenido') {
-          if (!dataToSave.fechaResolucion) dataToSave.fechaResolucion = new Date().toISOString().split('T')[0];
+        const asesorVacio = !String(dataToSave.asesor || '').trim();
+        const estadoVacio = !String(dataToSave.estado || '').trim();
+        if (asesorVacio || estadoVacio) {
+          dataToSave.asesor = ASESOR_PENDIENTE;
+          dataToSave.estado = 'Pendiente de ser contactado';
+        }
+
+        if (isResolutionStatus(dataToSave.estado)) {
+          if (!dataToSave.fechaResolucion) dataToSave.fechaResolucion = getTodayISO();
         } else {
           dataToSave.fechaResolucion = null;
         }
@@ -1830,8 +1926,9 @@
       const totalProofDiscount = currentDiscount + extraProofOffer; 
 
       const handleBlur = (field, value) => {
-        if (caseData[field] !== value) {
-          onUpdate({ ...caseData, [field]: value });
+        const finalValue = field === 'fechaResolucion' ? normalizeDateValue(value, '') : value;
+        if (caseData[field] !== finalValue) {
+          onUpdate({ ...caseData, [field]: finalValue });
         }
       };
 
@@ -1851,10 +1948,16 @@
       };
 
       const handleStatusClick = (s) => {
+        const estadoAnterior = normalizeEstadoCaso(caseData.estado);
+        const estadoNuevo = normalizeEstadoCaso(s);
+        const fechaResolucion = isResolutionStatus(estadoNuevo)
+          ? (estadoAnterior !== estadoNuevo || !localData.fechaResolucion ? getTodayISO() : normalizeDateValue(localData.fechaResolucion, getTodayISO()))
+          : null;
+
         if (s === 'Baja definitiva') {
           setShowBajaModal(true);
-        } else if (s === 'Retenido') {
-          onUpdate({ ...caseData, estado: s, detalleBaja: null, tipoBaja: null, fechaResolucion: localData.fechaResolucion || new Date().toISOString().split('T')[0] });
+        } else if (isResolutionStatus(s)) {
+          onUpdate({ ...caseData, estado: s, detalleBaja: null, tipoBaja: null, fechaResolucion });
         } else {
           onUpdate({ ...caseData, estado: s, detalleBaja: null, tipoBaja: null, fechaResolucion: null });
         }
@@ -1862,7 +1965,10 @@
 
       const confirmBajaDefinitiva = () => {
         const finalReason = localData.detalleBaja === 'Otro' ? localData.detalleBajaOtro : localData.detalleBaja;
-        onUpdate({ ...caseData, estado: 'Baja definitiva', tipoBaja: localData.tipoBaja, detalleBaja: finalReason, fechaResolucion: localData.fechaResolucion || new Date().toISOString().split('T')[0] });
+        const fechaResolucion = normalizeEstadoCaso(caseData.estado) !== 'Baja definitiva' || !localData.fechaResolucion
+          ? getTodayISO()
+          : normalizeDateValue(localData.fechaResolucion, getTodayISO());
+        onUpdate({ ...caseData, estado: 'Baja definitiva', tipoBaja: localData.tipoBaja, detalleBaja: finalReason, fechaResolucion });
         setShowBajaModal(false);
       };
 
@@ -1897,7 +2003,7 @@
         if (currentInteracciones.length === 0 && caseData.observacion) {
           currentInteracciones.push({
             id: 'initial',
-            fecha: caseData.fecha ? caseData.fecha + 'T00:00:00.000Z' : new Date().toISOString(),
+            fecha: normalizeDateValue(caseData.fecha, getTodayISO()) + 'T00:00:00.000Z',
             texto: caseData.observacion,
             rol: 'sistema'
           });
@@ -1926,7 +2032,7 @@
           if (finalInteractions.length === 0) {
             finalInteractions = [{
               id: 'initial',
-              fecha: caseData.fecha ? caseData.fecha + 'T00:00:00.000Z' : new Date().toISOString(),
+              fecha: normalizeDateValue(caseData.fecha, getTodayISO()) + 'T00:00:00.000Z',
               texto: editingMsgText,
               rol: 'sistema'
             }];
@@ -1955,7 +2061,7 @@
 
       const interacciones = (caseData.interacciones && caseData.interacciones.length > 0) 
         ? caseData.interacciones 
-        : (caseData.observacion ? [{id: 'old', fecha: caseData.fecha ? caseData.fecha + 'T12:00:00.000Z' : new Date().toISOString(), texto: caseData.observacion, rol: 'sistema'}] : []);
+        : (caseData.observacion ? [{id: 'old', fecha: normalizeDateValue(caseData.fecha, getTodayISO()) + 'T12:00:00.000Z', texto: caseData.observacion, rol: 'sistema'}] : []);
 
       const getNivelStyle = (nivel) => {
         if (!nivel) return 'text-slate-600 bg-slate-100 border-slate-200';
@@ -2089,13 +2195,13 @@
                       </span>
                     )}
                     <div className="mt-2 flex flex-col items-start md:items-end gap-1">
-                      <p className="text-[10px] text-slate-400">Creado: {caseData.fecha?.split('-').reverse().join('/') || '-'}</p>
-                      {(caseData.estado === 'Retenido' || caseData.estado === 'Baja definitiva') && (
+                      <p className="text-[10px] text-slate-400">Creado: {formatDateForDisplay(caseData.fecha)}</p>
+                      {isResolutionStatus(caseData.estado) && (
                         <div className="flex items-center gap-1.5 bg-white/50 px-2 py-1 rounded border border-slate-200 shadow-sm mt-1">
                           <span className="text-[10px] font-bold text-slate-600">Resuelto:</span>
                           <input 
                             type="date"
-                            value={localData.fechaResolucion || ''}
+                            value={normalizeDateValue(localData.fechaResolucion, '')}
                             onChange={(e) => setLocalData({...localData, fechaResolucion: e.target.value})}
                             onBlur={(e) => handleBlur('fechaResolucion', e.target.value)}
                             className="text-[10px] font-bold text-slate-800 bg-transparent outline-none cursor-pointer hover:text-indigo-600 transition-colors"
