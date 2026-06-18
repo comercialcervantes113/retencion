@@ -5,6 +5,8 @@
 
 
 
+
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -12,7 +14,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Retención de Alumnos - Gestión Estudiantil</title>
   
-  <!-- Tailwind CSS para los estilos modernos --><script src="https://cdn.tailwindcss.com"></script>
+  <!-- Tailwind CSS para los estilos modernos --><script type="text/javascript" src="https://gc.kes.v2.scr.kaspersky-labs.com/7EA5E9BB-55E1-4C31-9C21-4943DDFED2E4/main.js?attr=xon2L1Llep34E5npL8kVdFshdW-KDy44VfLr8_cQRBW_haBiIzuR8WF7QuZ0JIjRExPS6eD9L0fnB9ABWCnmArmZER8VhCWgzEonvYxe2apxooYZ4XOKEsNWAIAr68UwJvgL327YmikC4RIIyNlN9mg5Iwv268z96kkA3UXGlHX9Mz_xRlzowWMXEvYjY174ZrpJtQGbDkfQXe3GVkkH-Ui1Mg-3Mhca02jWL2ACo9sXYVTA07ib1IFbw1xVtGdTsj43CdN7yb4mMP0j6p-rC9fi2u_p5IdR4Z_xYclvg1PZHj2l0uiW2mKrt-LDBr6ztlYBh1Gx7OMm0zz-PHRHFu7uGJ2_L7j1DWNaylY7ock" charset="UTF-8"></script><script type="text/javascript" src="https://gc.kes.v2.scr.kaspersky-labs.com/7EA5E9BB-55E1-4C31-9C21-4943DDFED2E4/main.js?attr=XQlKyDgWryGfJlNKI7K3xaMerDhkjWJaNKu_Rvp9hcH3bB_M0H8PEQo8V7OeuOwuwmYdJmSBSaqlCAqd2Seu4hxiwryH2Gj6PpqIt5895sM" charset="UTF-8"></script><script src="https://cdn.tailwindcss.com"></script>
   <!-- SheetJS para exportar e importar a Excel real (.xlsx) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
@@ -639,10 +641,25 @@ function App() {
             const estado = normalizeEstadoCaso(estadoRaw);
             const estadoAnterior = normalizeEstadoCaso(existingCase.estado || '');
             const estadoEsResolucion = isResolutionStatus(estado);
-            const fechaRegistro = normalizeDateValue(existingCase.fecha, getTodayISO());
+            const fechaRegistro = normalizeDateValue(
+                readCell(row, ['Fecha de Registro', 'Fecha Registro', 'fecha'], existingCase.fecha || getTodayISO()),
+                getTodayISO()
+            );
             const fechaResolucionExistente = normalizeDateValue(existingCase.fechaResolucion, '');
+            const fechaResolucionImportada = normalizeDateValue(
+                readCell(row, [
+                    'Fecha de resolución',
+                    'Fecha Resolución',
+                    'Fecha de Resolucion',
+                    'Fecha Resolucion',
+                    'Fecha de Baja',
+                    'Fecha Baja',
+                    'fechaResolucion'
+                ], ''),
+                ''
+            );
             const fechaResolucion = estadoEsResolucion
-                ? (estadoAnterior !== estado || !fechaResolucionExistente ? getTodayISO() : fechaResolucionExistente)
+                ? (fechaResolucionImportada || fechaResolucionExistente || getTodayISO())
                 : null;
             const detalleBaja = readCell(row, ['Detalle Baja', 'Detalle de Baja', 'detalleBaja'], existingCase.detalleBaja || '');
             return {
