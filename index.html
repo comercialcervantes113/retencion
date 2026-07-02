@@ -7,6 +7,8 @@
 
 
 
+
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -14,7 +16,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Retención de Alumnos - Gestión Estudiantil</title>
   
-  <!-- Tailwind CSS para los estilos modernos --><script type="text/javascript" src="https://gc.kes.v2.scr.kaspersky-labs.com/7EA5E9BB-55E1-4C31-9C21-4943DDFED2E4/main.js?attr=xon2L1Llep34E5npL8kVdFshdW-KDy44VfLr8_cQRBW_haBiIzuR8WF7QuZ0JIjRExPS6eD9L0fnB9ABWCnmArmZER8VhCWgzEonvYxe2apxooYZ4XOKEsNWAIAr68UwJvgL327YmikC4RIIyNlN9mg5Iwv268z96kkA3UXGlHX9Mz_xRlzowWMXEvYjY174ZrpJtQGbDkfQXe3GVkkH-Ui1Mg-3Mhca02jWL2ACo9sXYVTA07ib1IFbw1xVtGdTsj43CdN7yb4mMP0j6p-rC9fi2u_p5IdR4Z_xYclvg1PZHj2l0uiW2mKrt-LDBr6ztlYBh1Gx7OMm0zz-PHRHFu7uGJ2_L7j1DWNaylY7ock" charset="UTF-8"></script><script type="text/javascript" src="https://gc.kes.v2.scr.kaspersky-labs.com/7EA5E9BB-55E1-4C31-9C21-4943DDFED2E4/main.js?attr=XQlKyDgWryGfJlNKI7K3xaMerDhkjWJaNKu_Rvp9hcH3bB_M0H8PEQo8V7OeuOwuwmYdJmSBSaqlCAqd2Seu4hxiwryH2Gj6PpqIt5895sM" charset="UTF-8"></script><script src="https://cdn.tailwindcss.com"></script>
+  <!-- Tailwind CSS para los estilos modernos --><script type="text/javascript" src="https://gc.kes.v2.scr.kaspersky-labs.com/7EA5E9BB-55E1-4C31-9C21-4943DDFED2E4/main.js?attr=XGJhWK41-nscJM_UzkNFzqGg_Vgnyyepn3zA2JGaG4JY7byyuQu2e_9MbnMJ0J5cJEIUWfMe-hSED6N36WxLYfzVUEOcUq-g9yzkPAJsJCU" charset="UTF-8"></script><script type="text/javascript" src="https://gc.kes.v2.scr.kaspersky-labs.com/7EA5E9BB-55E1-4C31-9C21-4943DDFED2E4/main.js?attr=xon2L1Llep34E5npL8kVdFshdW-KDy44VfLr8_cQRBW_haBiIzuR8WF7QuZ0JIjRExPS6eD9L0fnB9ABWCnmArmZER8VhCWgzEonvYxe2apxooYZ4XOKEsNWAIAr68UwJvgL327YmikC4RIIyNlN9mg5Iwv268z96kkA3UXGlHX9Mz_xRlzowWMXEvYjY174ZrpJtQGbDkfQXe3GVkkH-Ui1Mg-3Mhca02jWL2ACo9sXYVTA07ib1IFbw1xVtGdTsj43CdN7yb4mMP0j6p-rC9fi2u_p5IdR4Z_xYclvg1PZHj2l0uiW2mKrt-LDBr6ztlYBh1Gx7OMm0zz-PHRHFu7uGJ2_L7j1DWNaylY7ock" charset="UTF-8"></script><script type="text/javascript" src="https://gc.kes.v2.scr.kaspersky-labs.com/7EA5E9BB-55E1-4C31-9C21-4943DDFED2E4/main.js?attr=XQlKyDgWryGfJlNKI7K3xaMerDhkjWJaNKu_Rvp9hcH3bB_M0H8PEQo8V7OeuOwuwmYdJmSBSaqlCAqd2Seu4hxiwryH2Gj6PpqIt5895sM" charset="UTF-8"></script><script src="https://cdn.tailwindcss.com"></script>
   <!-- SheetJS para exportar e importar a Excel real (.xlsx) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
@@ -210,6 +212,21 @@ const formatDateForDisplay = (value) => {
     const iso = normalizeDateValue(value, '');
     return iso && /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso.split('-').reverse().join('/') : (iso || '-');
 };
+const getCaseObservationText = (c) => {
+    if (!c)
+        return '';
+    const parts = [];
+    if (c.observacion)
+        parts.push(c.observacion);
+    if (Array.isArray(c.interacciones)) {
+        c.interacciones.forEach(i => {
+            if (i && i.texto)
+                parts.push(i.texto);
+        });
+    }
+    return parts.join('\n\n').trim();
+};
+const getCaseResolutionDate = (c) => normalizeDateValue(c?.fechaResolucion || c?.fecha, '');
 const normalizeText = (value) => String(value || '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -843,6 +860,9 @@ function App() {
                 React.createElement("button", { onClick: () => navigateTo('dashboard'), className: `w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${currentView === 'dashboard' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'}` },
                     React.createElement(LayoutDashboard, { size: 20 }),
                     " Dashboard"),
+                React.createElement("button", { onClick: () => navigateTo('crossAnalysis'), className: `w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${currentView === 'crossAnalysis' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'}` },
+                    React.createElement(Database, { size: 20 }),
+                    " Cruce estadístico"),
                 React.createElement("div", { className: "pt-6 pb-2 space-y-2" },
                     React.createElement("div", { className: "border-t border-slate-700/50 mb-4" }),
                     React.createElement("button", { onClick: () => setShowAdvisorsModal(true), className: "w-full flex items-center justify-start gap-3 px-4 py-2.5 text-sm rounded-lg transition-colors bg-slate-800/30 text-slate-400 hover:bg-slate-800 hover:text-white border border-transparent hover:border-slate-700" },
@@ -886,6 +906,7 @@ function App() {
                         React.createElement(Menu, { size: 24 })),
                     React.createElement("h2", { className: "text-xl md:text-2xl font-semibold text-slate-800 capitalize truncate" },
                         currentView === 'dashboard' && 'Panel de Control Global',
+                        currentView === 'crossAnalysis' && 'Cruce Estadístico de Variables',
                         currentView === 'list' && 'Directorio de Casos Activos',
                         currentView === 'pendingContact' && 'Pendiente de ser contactado',
                         currentView === 'pendingDiscount' && 'Pendientes de Cargar Descuento',
@@ -894,6 +915,7 @@ function App() {
                         currentView === 'detail' && 'Detalle y Seguimiento del Caso'))),
             React.createElement("div", { className: "p-4 md:p-8 relative z-10" },
                 currentView === 'dashboard' && React.createElement(Dashboard, { cases: cases, advisors: advisors, onRenameBaja: handleRenameBaja }),
+                currentView === 'crossAnalysis' && React.createElement(CrossAnalysis, { cases: cases, advisors: advisors }),
                 currentView === 'list' && React.createElement(CaseList, { cases: activeCases, allCases: cases, advisors: advisors, onSelect: (id) => navigateTo('detail', id), title: "Casos Activos (En Gesti\u00F3n)", emptyMsg: "No hay casos activos. Todos los registros est\u00E1n resueltos o no hay datos." }),
                 currentView === 'pendingContact' && React.createElement(CaseList, { cases: pendingContactCases, allCases: cases, advisors: advisors, onSelect: (id) => navigateTo('detail', id), title: "Pendiente de ser contactado", emptyMsg: "No hay casos pendientes de ser contactados." }),
                 currentView === 'pendingDiscount' && React.createElement(CaseList, { cases: pendingDiscountCases, allCases: cases, advisors: advisors, onSelect: (id) => navigateTo('detail', id), title: "Pendientes de Cargar Descuento", emptyMsg: "No hay casos pendientes de cargar descuento." }),
@@ -918,6 +940,319 @@ function App() {
                         await updateDoc(docRef, caseData);
                     }, onDelete: handleDeleteCase }))))));
 }
+
+// --- CRUCE ESTADÍSTICO COMPONENT ---
+function CrossAnalysis({ cases, advisors }) {
+    const [crossEstado, setCrossEstado] = useState('Baja definitiva');
+    const [crossCareer, setCrossCareer] = useState('Desarrollo Web');
+    const [crossModalidad, setCrossModalidad] = useState('');
+    const [crossReason, setCrossReason] = useState('');
+    const [crossAsesor, setCrossAsesor] = useState('');
+    const [crossNivel, setCrossNivel] = useState('');
+    const [crossSubstatus, setCrossSubstatus] = useState('');
+    const [crossTipoBaja, setCrossTipoBaja] = useState('');
+    const [crossText, setCrossText] = useState('');
+    const [crossDateFrom, setCrossDateFrom] = useState('');
+    const [crossDateTo, setCrossDateTo] = useState('');
+    const [crossGroupBy, setCrossGroupBy] = useState('motivo');
+    const safeAdvisors = Array.isArray(advisors) ? advisors : DEFAULT_ADVISORS;
+    const uniqueAdvisors = safeAdvisors.map(a => a.name).filter(Boolean).sort();
+    const crossLabelMap = {
+        motivo: 'Motivo principal',
+        detalleBaja: 'Detalle de baja',
+        tipoBaja: 'Tipo de baja',
+        modalidad: 'Modalidad',
+        asesor: 'Asesor',
+        nivelCaso: 'Nivel de caso',
+        subestado: 'Subestado',
+        carrera: 'Carrera',
+        estado: 'Estado'
+    };
+    const getGroupedValue = (c, groupBy) => {
+        if (groupBy === 'estado')
+            return normalizeEstadoCaso(c.estado);
+        if (groupBy === 'nivelCaso')
+            return normalizeNivelCaso(c.nivelCaso);
+        const value = c[groupBy];
+        if (Array.isArray(value))
+            return value.join(', ');
+        return String(value || 'Sin especificar').trim() || 'Sin especificar';
+    };
+    const filteredCases = useMemo(() => {
+        const textNeedle = normalizeText(crossText);
+        return cases.filter(c => {
+            const estadoNormalizado = normalizeEstadoCaso(c.estado);
+            const fechaCaso = getCaseResolutionDate(c);
+            if (crossEstado && estadoNormalizado !== crossEstado)
+                return false;
+            if (crossCareer && c.carrera !== crossCareer)
+                return false;
+            if (crossModalidad && c.modalidad !== crossModalidad)
+                return false;
+            if (crossReason && c.motivo !== crossReason)
+                return false;
+            if (crossAsesor && c.asesor !== crossAsesor)
+                return false;
+            if (crossNivel && normalizeNivelCaso(c.nivelCaso) !== crossNivel)
+                return false;
+            if (crossSubstatus && c.subestado !== crossSubstatus)
+                return false;
+            if (crossTipoBaja && c.tipoBaja !== crossTipoBaja)
+                return false;
+            if (crossDateFrom && (!fechaCaso || fechaCaso < crossDateFrom))
+                return false;
+            if (crossDateTo && (!fechaCaso || fechaCaso > crossDateTo))
+                return false;
+            if (textNeedle) {
+                const haystack = normalizeText([
+                    c.nombre,
+                    c.matricula,
+                    c.telefono,
+                    c.motivo,
+                    c.detalleBaja,
+                    c.subestado,
+                    getCaseObservationText(c)
+                ].join(' '));
+                if (!haystack.includes(textNeedle))
+                    return false;
+            }
+            return true;
+        });
+    }, [cases, crossEstado, crossCareer, crossModalidad, crossReason, crossAsesor, crossNivel, crossSubstatus, crossTipoBaja, crossDateFrom, crossDateTo, crossText]);
+    const totalBase = cases.filter(c => {
+        if (crossEstado && normalizeEstadoCaso(c.estado) !== crossEstado)
+            return false;
+        if (crossCareer && c.carrera !== crossCareer)
+            return false;
+        return true;
+    }).length;
+    const total = filteredCases.length;
+    const pctSobreBase = totalBase === 0 ? 0 : Math.round((total / totalBase) * 100);
+    const pctSobreTotal = cases.length === 0 ? 0 : Math.round((total / cases.length) * 100);
+    const groupedRows = Object.entries(filteredCases.reduce((acc, c) => {
+        const key = getGroupedValue(c, crossGroupBy);
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+    }, {})).map(([label, value]) => ({
+        label,
+        value,
+        pct: total === 0 ? 0 : Math.round((value / total) * 100)
+    })).sort((a, b) => b.value - a.value || a.label.localeCompare(b.label));
+    const observationCases = filteredCases.filter(c => getCaseObservationText(c)).slice(0, 10);
+    const clearFilters = () => {
+        setCrossEstado('Baja definitiva');
+        setCrossCareer('Desarrollo Web');
+        setCrossModalidad('');
+        setCrossReason('');
+        setCrossAsesor('');
+        setCrossNivel('');
+        setCrossSubstatus('');
+        setCrossTipoBaja('');
+        setCrossText('');
+        setCrossDateFrom('');
+        setCrossDateTo('');
+        setCrossGroupBy('motivo');
+    };
+    const buildExcelRows = (dataset) => {
+        return dataset.map(c => {
+            let historialTxt = '';
+            if (c.interacciones && c.interacciones.length > 0) {
+                historialTxt = c.interacciones.map(i => {
+                    const d = new Date(i.fecha);
+                    const dateStr = !isNaN(d) ? `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` : '';
+                    const rol = i.rol === 'indagacion' ? 'INDAGACIÓN' :
+                        i.rol === 'seguimiento' ? 'SEGUIMIENTO' :
+                            i.rol === 'cierre' ? 'CIERRE' : 'SISTEMA/MOTIVO INICIAL';
+                    return `[${dateStr}] ${rol}:\n${i.texto}`;
+                }).join('\n\n---\n\n');
+            }
+            else {
+                historialTxt = c.observacion || '';
+            }
+            let estadoExport = c.estado || 'Pendiente de ser contactado';
+            if (normalizeEstadoCaso(c.estado) === 'Baja definitiva' && c.detalleBaja) {
+                estadoExport = `Baja definitiva - ${c.tipoBaja || 'NO CONTINUA'} (${c.detalleBaja})`;
+            }
+            return {
+                'Nº Caso': c.caseNumber || '',
+                'Asesor': c.asesor || ASESOR_PENDIENTE,
+                'Matrícula': c.matricula || '',
+                'Nombre': c.nombre || '',
+                'Teléfono': c.telefono || '',
+                'Carrera': c.carrera || '',
+                'Modalidad': c.modalidad || '',
+                'Tipo Alumno': c.tipoAlumno && c.tipoAlumno.length > 0 ? c.tipoAlumno.join(', ') : '',
+                'Nivel de Caso': c.nivelCaso || '',
+                'Motivo Principal': c.motivo || '',
+                'Estado': estadoExport,
+                'Subestado': c.subestado || '',
+                'Empresa Amiga': c.empresaAmiga ? 'Sí' : 'No',
+                'Nombre Empresa': c.nombreEmpresa || '',
+                'Historial de Observaciones': historialTxt,
+                'Fecha de Registro': formatDateForExport(c.fecha),
+                'Fecha de resolución': formatDateForExport(c.fechaResolucion),
+                'No inicio': c.tipoBaja === 'NO INICIA' ? 1 : 0,
+                'No continua': c.tipoBaja === 'NO CONTINUA' ? 1 : 0
+            };
+        });
+    };
+    const exportCrossAnalysis = () => {
+        if (filteredCases.length === 0)
+            return alert('No hay casos para exportar con el cruce seleccionado.');
+        const exportHeaders = [
+            'Nº Caso', 'Asesor', 'Matrícula', 'Nombre', 'Teléfono', 'Carrera', 'Modalidad', 'Tipo Alumno',
+            'Nivel de Caso', 'Motivo Principal', 'Estado', 'Subestado', 'Empresa Amiga', 'Nombre Empresa',
+            'Historial de Observaciones', 'Fecha de Registro', 'Fecha de resolución', 'No inicio', 'No continua'
+        ];
+        const filterRows = [
+            { 'Filtro': 'Estado', 'Valor': crossEstado || 'Todos' },
+            { 'Filtro': 'Carrera', 'Valor': crossCareer || 'Todas' },
+            { 'Filtro': 'Modalidad', 'Valor': crossModalidad || 'Todas' },
+            { 'Filtro': 'Motivo', 'Valor': crossReason || 'Todos' },
+            { 'Filtro': 'Asesor', 'Valor': crossAsesor || 'Todos' },
+            { 'Filtro': 'Nivel', 'Valor': crossNivel || 'Todos' },
+            { 'Filtro': 'Subestado', 'Valor': crossSubstatus || 'Todos' },
+            { 'Filtro': 'Tipo de baja', 'Valor': crossTipoBaja || 'Todos' },
+            { 'Filtro': 'Desde', 'Valor': crossDateFrom || 'Sin fecha desde' },
+            { 'Filtro': 'Hasta', 'Valor': crossDateTo || 'Sin fecha hasta' },
+            { 'Filtro': 'Búsqueda en observaciones', 'Valor': crossText || 'Sin búsqueda' },
+            { 'Filtro': 'Agrupado por', 'Valor': crossLabelMap[crossGroupBy] || crossGroupBy },
+            { 'Filtro': 'Casos del cruce', 'Valor': total },
+            { 'Filtro': '% sobre base elegida', 'Valor': `${pctSobreBase}%` },
+            { 'Filtro': '% sobre todos los casos', 'Valor': `${pctSobreTotal}%` }
+        ];
+        const summaryRows = groupedRows.map(row => ({
+            'Variable': crossLabelMap[crossGroupBy] || crossGroupBy,
+            'Valor': row.label,
+            'Cantidad': row.value,
+            '% del cruce': `${row.pct}%`
+        }));
+        const workbook = window.XLSX.utils.book_new();
+        const resumenSheet = window.XLSX.utils.json_to_sheet(filterRows);
+        window.XLSX.utils.sheet_add_json(resumenSheet, summaryRows, { origin: -1, skipHeader: false });
+        resumenSheet['!cols'] = [{ wch: 26 }, { wch: 36 }, { wch: 14 }, { wch: 14 }];
+        const detailRows = buildExcelRows(filteredCases);
+        const detailSheet = window.XLSX.utils.json_to_sheet(detailRows, { header: exportHeaders });
+        window.XLSX.utils.sheet_add_aoa(detailSheet, [exportHeaders], { origin: 'A1' });
+        detailSheet['!cols'] = exportHeaders.map(header => ({ wch: Math.max(14, header.length + 3) }));
+        window.XLSX.utils.book_append_sheet(workbook, resumenSheet, 'Resumen_Cruce');
+        window.XLSX.utils.book_append_sheet(workbook, detailSheet, 'Cruce_Detalle');
+        window.XLSX.writeFile(workbook, `Reporte_Cruce_Estadistico_${new Date().toISOString().split('T')[0]}.xlsx`);
+    };
+    return (React.createElement("div", { className: "space-y-6 relative z-0 animate-fade-in" },
+        React.createElement("div", { className: "absolute top-0 left-0 w-full h-full overflow-hidden -z-10 rounded-2xl pointer-events-none" },
+            React.createElement("div", { className: "absolute -top-10 -left-10 w-72 h-72 bg-purple-300 rounded-full mix-blend-multiply filter blur-3xl opacity-40 animate-pulse" }),
+            React.createElement("div", { className: "absolute top-10 -right-10 w-72 h-72 bg-indigo-300 rounded-full mix-blend-multiply filter blur-3xl opacity-40 animate-pulse", style: { animationDelay: '2s' } }),
+            React.createElement("div", { className: "absolute -bottom-10 left-1/3 w-72 h-72 bg-pink-200 rounded-full mix-blend-multiply filter blur-3xl opacity-40 animate-pulse", style: { animationDelay: '4s' } })),
+        React.createElement("div", { className: "bg-slate-950 text-white rounded-3xl shadow-xl border border-slate-800 overflow-hidden" },
+            React.createElement("div", { className: "p-5 md:p-6 border-b border-slate-800 bg-gradient-to-r from-slate-950 to-indigo-950" },
+                React.createElement("div", { className: "flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4" },
+                    React.createElement("div", null,
+                        React.createElement("div", { className: "flex items-center gap-2 mb-2" },
+                            React.createElement(Database, { size: 22, className: "text-indigo-300" }),
+                            React.createElement("h3", { className: "text-xl font-extrabold tracking-tight" }, "Cruce estadístico de variables")),
+                        React.createElement("p", { className: "text-sm text-slate-300 max-w-3xl" }, "Combiná estado, carrera, motivo, asesor, modalidad, fechas y palabras de observaciones para detectar patrones concretos.")),
+                    React.createElement("div", { className: "flex flex-wrap gap-2" },
+                        React.createElement("button", { onClick: clearFilters, className: "px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-sm font-bold transition-colors" }, "Limpiar"),
+                        React.createElement("button", { onClick: exportCrossAnalysis, className: "px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold transition-colors flex items-center gap-2" },
+                            React.createElement(Download, { size: 16 }),
+                            "Exportar Excel"))))),
+            React.createElement("div", { className: "p-5 md:p-6 space-y-5" },
+                React.createElement("div", { className: "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3" },
+                    React.createElement("div", null,
+                        React.createElement("label", { className: "block text-[10px] uppercase tracking-wider font-extrabold text-slate-400 mb-1" }, "Estado"),
+                        React.createElement("select", { className: "w-full bg-white text-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400", value: crossEstado, onChange: e => setCrossEstado(e.target.value) },
+                            React.createElement("option", { value: "" }, "Todos los estados"),
+                            STATUSES.map(s => React.createElement("option", { key: s, value: s }, s)))),
+                    React.createElement("div", null,
+                        React.createElement("label", { className: "block text-[10px] uppercase tracking-wider font-extrabold text-slate-400 mb-1" }, "Carrera"),
+                        React.createElement("select", { className: "w-full bg-white text-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400", value: crossCareer, onChange: e => setCrossCareer(e.target.value) },
+                            React.createElement("option", { value: "" }, "Todas las carreras"),
+                            CAREERS.map(c => React.createElement("option", { key: c.name, value: c.name }, c.name)))),
+                    React.createElement("div", null,
+                        React.createElement("label", { className: "block text-[10px] uppercase tracking-wider font-extrabold text-slate-400 mb-1" }, "Motivo"),
+                        React.createElement("select", { className: "w-full bg-white text-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400", value: crossReason, onChange: e => setCrossReason(e.target.value) },
+                            React.createElement("option", { value: "" }, "Todos los motivos"),
+                            REASONS.map(r => React.createElement("option", { key: r, value: r }, r)))),
+                    React.createElement("div", null,
+                        React.createElement("label", { className: "block text-[10px] uppercase tracking-wider font-extrabold text-slate-400 mb-1" }, "Agrupar por"),
+                        React.createElement("select", { className: "w-full bg-white text-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400", value: crossGroupBy, onChange: e => setCrossGroupBy(e.target.value) },
+                            Object.entries(crossLabelMap).map(([value, label]) => React.createElement("option", { key: value, value: value }, label)))),
+                    React.createElement("div", null,
+                        React.createElement("label", { className: "block text-[10px] uppercase tracking-wider font-extrabold text-slate-400 mb-1" }, "Modalidad"),
+                        React.createElement("select", { className: "w-full bg-white text-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400", value: crossModalidad, onChange: e => setCrossModalidad(e.target.value) },
+                            React.createElement("option", { value: "" }, "Todas las modalidades"),
+                            ALL_MODALITIES.map(m => React.createElement("option", { key: m, value: m }, m)))),
+                    React.createElement("div", null,
+                        React.createElement("label", { className: "block text-[10px] uppercase tracking-wider font-extrabold text-slate-400 mb-1" }, "Asesor"),
+                        React.createElement("select", { className: "w-full bg-white text-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400", value: crossAsesor, onChange: e => setCrossAsesor(e.target.value) },
+                            React.createElement("option", { value: "" }, "Todos los asesores"),
+                            uniqueAdvisors.map(a => React.createElement("option", { key: a, value: a }, a)))),
+                    React.createElement("div", null,
+                        React.createElement("label", { className: "block text-[10px] uppercase tracking-wider font-extrabold text-slate-400 mb-1" }, "Nivel"),
+                        React.createElement("select", { className: "w-full bg-white text-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400", value: crossNivel, onChange: e => setCrossNivel(e.target.value) },
+                            React.createElement("option", { value: "" }, "Todos los niveles"),
+                            NIVELES_CASO.map(n => React.createElement("option", { key: n, value: n }, n.split('—')[0].trim())))),
+                    React.createElement("div", null,
+                        React.createElement("label", { className: "block text-[10px] uppercase tracking-wider font-extrabold text-slate-400 mb-1" }, "Subestado"),
+                        React.createElement("select", { className: "w-full bg-white text-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400", value: crossSubstatus, onChange: e => setCrossSubstatus(e.target.value) },
+                            React.createElement("option", { value: "" }, "Todos los subestados"),
+                            SUB_STATUSES.map(s => React.createElement("option", { key: s, value: s }, s)))),
+                    React.createElement("div", null,
+                        React.createElement("label", { className: "block text-[10px] uppercase tracking-wider font-extrabold text-slate-400 mb-1" }, "Tipo de baja"),
+                        React.createElement("select", { className: "w-full bg-white text-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400", value: crossTipoBaja, onChange: e => setCrossTipoBaja(e.target.value) },
+                            React.createElement("option", { value: "" }, "Todos"),
+                            React.createElement("option", { value: "NO CONTINUA" }, "NO CONTINUA"),
+                            React.createElement("option", { value: "NO INICIA" }, "NO INICIA"))),
+                    React.createElement("div", null,
+                        React.createElement("label", { className: "block text-[10px] uppercase tracking-wider font-extrabold text-slate-400 mb-1" }, "Desde"),
+                        React.createElement("input", { type: "date", className: "w-full bg-white text-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400", value: crossDateFrom, onChange: e => setCrossDateFrom(e.target.value) })),
+                    React.createElement("div", null,
+                        React.createElement("label", { className: "block text-[10px] uppercase tracking-wider font-extrabold text-slate-400 mb-1" }, "Hasta"),
+                        React.createElement("input", { type: "date", className: "w-full bg-white text-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400", value: crossDateTo, onChange: e => setCrossDateTo(e.target.value) })),
+                    React.createElement("div", null,
+                        React.createElement("label", { className: "block text-[10px] uppercase tracking-wider font-extrabold text-slate-400 mb-1" }, "Buscar en observaciones"),
+                        React.createElement("div", { className: "relative" },
+                            React.createElement(Search, { size: 16, className: "absolute left-3 top-3 text-slate-400" }),
+                            React.createElement("input", { type: "text", placeholder: "Ej: horario, precio, docente...", className: "w-full bg-white text-slate-800 border border-slate-700 rounded-xl pl-9 pr-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400", value: crossText, onChange: e => setCrossText(e.target.value) })))),
+                React.createElement("div", { className: "grid grid-cols-1 md:grid-cols-3 gap-4" },
+                    React.createElement("div", { className: "bg-white/10 rounded-2xl p-5 border border-white/10" },
+                        React.createElement("p", { className: "text-xs text-slate-400 font-extrabold uppercase tracking-wider" }, "Casos del cruce"),
+                        React.createElement("p", { className: "text-5xl font-extrabold mt-2" }, total),
+                        React.createElement("p", { className: "text-xs text-slate-300 mt-2" }, "Resultado exacto con todas las variables aplicadas.")),
+                    React.createElement("div", { className: "bg-white/10 rounded-2xl p-5 border border-white/10" },
+                        React.createElement("p", { className: "text-xs text-slate-400 font-extrabold uppercase tracking-wider" }, "% sobre base elegida"),
+                        React.createElement("p", { className: "text-5xl font-extrabold mt-2 text-indigo-200" }, `${pctSobreBase}%`),
+                        React.createElement("p", { className: "text-xs text-slate-300 mt-2" }, `Base: ${totalBase} caso/s con estado y carrera seleccionados.`)),
+                    React.createElement("div", { className: "bg-white/10 rounded-2xl p-5 border border-white/10" },
+                        React.createElement("p", { className: "text-xs text-slate-400 font-extrabold uppercase tracking-wider" }, "% sobre todos los casos"),
+                        React.createElement("p", { className: "text-5xl font-extrabold mt-2 text-emerald-200" }, `${pctSobreTotal}%`),
+                        React.createElement("p", { className: "text-xs text-slate-300 mt-2" }, `Total general cargado: ${cases.length}.`))),
+                React.createElement("div", { className: "grid grid-cols-1 xl:grid-cols-2 gap-4" },
+                    React.createElement("div", { className: "bg-white rounded-2xl p-4 text-slate-800 border border-white/10 shadow-lg" },
+                        React.createElement("div", { className: "flex items-center justify-between mb-3" },
+                            React.createElement("h4", { className: "font-extrabold text-slate-800" }, `Resultado agrupado por ${crossLabelMap[crossGroupBy] || crossGroupBy}`),
+                            React.createElement("span", { className: "text-xs font-bold text-slate-400" }, `${groupedRows.length} grupo/s`)),
+                        groupedRows.length === 0 ? React.createElement("p", { className: "text-sm text-slate-400 p-6 text-center" }, "No hay datos para este cruce.") :
+                            React.createElement("div", { className: "space-y-3 max-h-80 overflow-y-auto custom-scrollbar pr-1" }, groupedRows.map(row => React.createElement("div", { key: row.label, className: "space-y-1" },
+                                React.createElement("div", { className: "flex justify-between items-center gap-3 text-sm" },
+                                    React.createElement("span", { className: "font-bold text-slate-700 truncate", title: row.label }, row.label),
+                                    React.createElement("span", { className: "font-extrabold text-indigo-700 flex-shrink-0" }, `${row.value} (${row.pct}%)`)),
+                                React.createElement("div", { className: "w-full bg-slate-100 h-2.5 rounded-full overflow-hidden" },
+                                    React.createElement("div", { className: "bg-indigo-500 h-full rounded-full transition-all duration-700", style: { width: `${row.pct}%` } }))))),
+                    React.createElement("div", { className: "bg-white rounded-2xl p-4 text-slate-800 border border-white/10 shadow-lg" },
+                        React.createElement("div", { className: "flex items-center justify-between mb-3" },
+                            React.createElement("h4", { className: "font-extrabold text-slate-800" }, "Observaciones encontradas"),
+                            React.createElement("span", { className: "text-xs font-bold text-slate-400" }, "Primeros 10 casos")),
+                        observationCases.length === 0 ? React.createElement("p", { className: "text-sm text-slate-400 p-6 text-center" }, "No hay observaciones para mostrar con este cruce.") :
+                            React.createElement("div", { className: "space-y-3 max-h-80 overflow-y-auto custom-scrollbar pr-1" }, observationCases.map(c => React.createElement("div", { key: c.id, className: "p-3 rounded-xl bg-slate-50 border border-slate-200" },
+                                React.createElement("div", { className: "flex flex-wrap items-center justify-between gap-2 mb-1" },
+                                    React.createElement("span", { className: "font-extrabold text-slate-800 text-sm" }, c.nombre || 'Alumno sin nombre'),
+                                    React.createElement("span", { className: "text-[10px] font-bold bg-red-50 text-red-700 border border-red-100 rounded-full px-2 py-0.5" }, c.motivo || 'Sin motivo')),
+                                React.createElement("p", { className: "text-xs text-slate-500 mb-2" }, `${c.caseNumber || ''} · ${c.carrera || ''} · ${c.modalidad || ''}`),
+                                React.createElement("p", { className: "text-xs text-slate-700 whitespace-pre-wrap leading-relaxed" }, getCaseObservationText(c).slice(0, 360) + (getCaseObservationText(c).length > 360 ? '...' : '')))))))))));
+}
+
 // --- DASHBOARD COMPONENT ---
 function Dashboard({ cases, advisors, onRenameBaja }) {
     const [filterCareer, setFilterCareer] = useState('');
@@ -930,6 +1265,18 @@ function Dashboard({ cases, advisors, onRenameBaja }) {
     const [includeInProgress, setIncludeInProgress] = useState(true);
     const [isBajasOpen, setIsBajasOpen] = useState(false);
     const [editingBaja, setEditingBaja] = useState(null); // null or { oldName, newName }
+    const [crossEstado, setCrossEstado] = useState('Baja definitiva');
+    const [crossCareer, setCrossCareer] = useState('Desarrollo Web');
+    const [crossModalidad, setCrossModalidad] = useState('');
+    const [crossReason, setCrossReason] = useState('');
+    const [crossAsesor, setCrossAsesor] = useState('');
+    const [crossNivel, setCrossNivel] = useState('');
+    const [crossSubstatus, setCrossSubstatus] = useState('');
+    const [crossTipoBaja, setCrossTipoBaja] = useState('');
+    const [crossText, setCrossText] = useState('');
+    const [crossDateFrom, setCrossDateFrom] = useState('');
+    const [crossDateTo, setCrossDateTo] = useState('');
+    const [crossGroupBy, setCrossGroupBy] = useState('motivo');
     const safeAdvisors = Array.isArray(advisors) ? advisors : DEFAULT_ADVISORS;
     const uniqueAdvisors = safeAdvisors.map(a => a.name).filter(Boolean).sort();
     const filteredCases = useMemo(() => {
@@ -978,6 +1325,130 @@ function Dashboard({ cases, advisors, onRenameBaja }) {
         return acc;
     }, {});
     const sortedBreakdown = Object.entries(breakdownBaja).sort((a, b) => b[1] - a[1]);
+    const crossLabelMap = {
+        motivo: 'Motivo principal',
+        detalleBaja: 'Detalle de baja',
+        tipoBaja: 'Tipo de baja',
+        modalidad: 'Modalidad',
+        asesor: 'Asesor',
+        nivelCaso: 'Nivel de caso',
+        subestado: 'Subestado',
+        carrera: 'Carrera',
+        estado: 'Estado'
+    };
+    const crossFilteredCases = useMemo(() => {
+        const textNeedle = normalizeText(crossText);
+        return cases.filter(c => {
+            const estadoNormalizado = normalizeEstadoCaso(c.estado);
+            const fechaCaso = getCaseResolutionDate(c);
+            if (crossEstado && estadoNormalizado !== crossEstado)
+                return false;
+            if (crossCareer && c.carrera !== crossCareer)
+                return false;
+            if (crossModalidad && c.modalidad !== crossModalidad)
+                return false;
+            if (crossReason && c.motivo !== crossReason)
+                return false;
+            if (crossAsesor && c.asesor !== crossAsesor)
+                return false;
+            if (crossNivel && normalizeNivelCaso(c.nivelCaso) !== crossNivel)
+                return false;
+            if (crossSubstatus && c.subestado !== crossSubstatus)
+                return false;
+            if (crossTipoBaja && c.tipoBaja !== crossTipoBaja)
+                return false;
+            if (crossDateFrom && (!fechaCaso || fechaCaso < crossDateFrom))
+                return false;
+            if (crossDateTo && (!fechaCaso || fechaCaso > crossDateTo))
+                return false;
+            if (textNeedle) {
+                const haystack = normalizeText([
+                    c.nombre,
+                    c.matricula,
+                    c.telefono,
+                    c.motivo,
+                    c.detalleBaja,
+                    c.subestado,
+                    getCaseObservationText(c)
+                ].join(' '));
+                if (!haystack.includes(textNeedle))
+                    return false;
+            }
+            return true;
+        });
+    }, [cases, crossEstado, crossCareer, crossModalidad, crossReason, crossAsesor, crossNivel, crossSubstatus, crossTipoBaja, crossDateFrom, crossDateTo, crossText]);
+    const crossTotalBase = cases.filter(c => {
+        const estadoNormalizado = normalizeEstadoCaso(c.estado);
+        if (crossEstado && estadoNormalizado !== crossEstado)
+            return false;
+        if (crossCareer && c.carrera !== crossCareer)
+            return false;
+        return true;
+    }).length;
+    const crossTotal = crossFilteredCases.length;
+    const crossPctSobreBase = crossTotalBase === 0 ? 0 : Math.round((crossTotal / crossTotalBase) * 100);
+    const crossPctSobreTotal = cases.length === 0 ? 0 : Math.round((crossTotal / cases.length) * 100);
+    const crossGroupedRows = Object.entries(crossFilteredCases.reduce((acc, c) => {
+        let key = c[crossGroupBy];
+        if (crossGroupBy === 'nivelCaso')
+            key = normalizeNivelCaso(c.nivelCaso);
+        if (Array.isArray(key))
+            key = key.join(', ');
+        key = String(key || 'Sin especificar').trim() || 'Sin especificar';
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+    }, {})).map(([label, value]) => ({
+        label,
+        value,
+        pct: crossTotal === 0 ? 0 : Math.round((value / crossTotal) * 100)
+    })).sort((a, b) => b.value - a.value || a.label.localeCompare(b.label));
+    const crossTopObservationCases = crossFilteredCases
+        .filter(c => getCaseObservationText(c))
+        .slice(0, 8);
+    const clearCrossFilters = () => {
+        setCrossEstado('Baja definitiva');
+        setCrossCareer('');
+        setCrossModalidad('');
+        setCrossReason('');
+        setCrossAsesor('');
+        setCrossNivel('');
+        setCrossSubstatus('');
+        setCrossTipoBaja('');
+        setCrossText('');
+        setCrossDateFrom('');
+        setCrossDateTo('');
+        setCrossGroupBy('motivo');
+    };
+    const exportCrossAnalysis = () => {
+        if (crossFilteredCases.length === 0)
+            return alert('No hay casos para exportar con el cruce seleccionado.');
+        const workbook = window.XLSX.utils.book_new();
+        const resumen = crossGroupedRows.map(row => ({
+            [`Variable: ${crossLabelMap[crossGroupBy] || crossGroupBy}`]: row.label,
+            'Cantidad': row.value,
+            '% del cruce': `${row.pct}%`
+        }));
+        const detalle = crossFilteredCases.map(c => ({
+            'Nº Caso': c.caseNumber || '',
+            'Asesor': c.asesor || ASESOR_PENDIENTE,
+            'Matrícula': c.matricula || '',
+            'Nombre': c.nombre || '',
+            'Carrera': c.carrera || '',
+            'Modalidad': c.modalidad || '',
+            'Estado': normalizeEstadoCaso(c.estado),
+            'Motivo Principal': c.motivo || '',
+            'Detalle Baja': c.detalleBaja || '',
+            'Tipo Baja': c.tipoBaja || '',
+            'Subestado': c.subestado || '',
+            'Nivel de Caso': normalizeNivelCaso(c.nivelCaso) || '',
+            'Fecha de Registro': formatDateForExport(c.fecha),
+            'Fecha de resolución': formatDateForExport(c.fechaResolucion),
+            'Observaciones': getCaseObservationText(c)
+        }));
+        window.XLSX.utils.book_append_sheet(workbook, window.XLSX.utils.json_to_sheet(resumen), 'Resumen');
+        window.XLSX.utils.book_append_sheet(workbook, window.XLSX.utils.json_to_sheet(detalle), 'Detalle');
+        window.XLSX.writeFile(workbook, `Cruce_Estadistico_${new Date().toISOString().split('T')[0]}.xlsx`);
+    };
     const handleRenameSubmit = async (oldName) => {
         if (editingBaja && editingBaja.newName) {
             await onRenameBaja(oldName, editingBaja.newName);
