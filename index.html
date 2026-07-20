@@ -9,6 +9,7 @@
 
 
 
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -16,7 +17,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Gestión de bajas y retención de alumnos</title>
   
-  <!-- Tailwind CSS para los estilos modernos --><script type="text/javascript" src="https://gc.kes.v2.scr.kaspersky-labs.com/7EA5E9BB-55E1-4C31-9C21-4943DDFED2E4/main.js?attr=XGJhWK41-nscJM_UzkNFzqGg_Vgnyyepn3zA2JGaG4JY7byyuQu2e_9MbnMJ0J5cJEIUWfMe-hSED6N36WxLYfzVUEOcUq-g9yzkPAJsJCU" charset="UTF-8"></script><script type="text/javascript" src="https://gc.kes.v2.scr.kaspersky-labs.com/7EA5E9BB-55E1-4C31-9C21-4943DDFED2E4/main.js?attr=xon2L1Llep34E5npL8kVdFshdW-KDy44VfLr8_cQRBW_haBiIzuR8WF7QuZ0JIjRExPS6eD9L0fnB9ABWCnmArmZER8VhCWgzEonvYxe2apxooYZ4XOKEsNWAIAr68UwJvgL327YmikC4RIIyNlN9mg5Iwv268z96kkA3UXGlHX9Mz_xRlzowWMXEvYjY174ZrpJtQGbDkfQXe3GVkkH-Ui1Mg-3Mhca02jWL2ACo9sXYVTA07ib1IFbw1xVtGdTsj43CdN7yb4mMP0j6p-rC9fi2u_p5IdR4Z_xYclvg1PZHj2l0uiW2mKrt-LDBr6ztlYBh1Gx7OMm0zz-PHRHFu7uGJ2_L7j1DWNaylY7ock" charset="UTF-8"></script><script type="text/javascript" src="https://gc.kes.v2.scr.kaspersky-labs.com/7EA5E9BB-55E1-4C31-9C21-4943DDFED2E4/main.js?attr=XQlKyDgWryGfJlNKI7K3xaMerDhkjWJaNKu_Rvp9hcH3bB_M0H8PEQo8V7OeuOwuwmYdJmSBSaqlCAqd2Seu4hxiwryH2Gj6PpqIt5895sM" charset="UTF-8"></script><script src="https://cdn.tailwindcss.com"></script>
+  <!-- Tailwind CSS para los estilos modernos --><script type="text/javascript" src="https://gc.kes.v2.scr.kaspersky-labs.com/7EA5E9BB-55E1-4C31-9C21-4943DDFED2E4/main.js?attr=pGYpMeDZSg2MZU1UobpMEWxHckzWg2_pGI-WWIe-KmkyVxNY9bz8WWRCMCkcSP-98v7tGMLMjhYVs0I-C_Y7FJCSa-ixggMDi-rhE_Z-uGQ" charset="UTF-8"></script><script type="text/javascript" src="https://gc.kes.v2.scr.kaspersky-labs.com/7EA5E9BB-55E1-4C31-9C21-4943DDFED2E4/main.js?attr=XGJhWK41-nscJM_UzkNFzqGg_Vgnyyepn3zA2JGaG4JY7byyuQu2e_9MbnMJ0J5cJEIUWfMe-hSED6N36WxLYfzVUEOcUq-g9yzkPAJsJCU" charset="UTF-8"></script><script type="text/javascript" src="https://gc.kes.v2.scr.kaspersky-labs.com/7EA5E9BB-55E1-4C31-9C21-4943DDFED2E4/main.js?attr=xon2L1Llep34E5npL8kVdFshdW-KDy44VfLr8_cQRBW_haBiIzuR8WF7QuZ0JIjRExPS6eD9L0fnB9ABWCnmArmZER8VhCWgzEonvYxe2apxooYZ4XOKEsNWAIAr68UwJvgL327YmikC4RIIyNlN9mg5Iwv268z96kkA3UXGlHX9Mz_xRlzowWMXEvYjY174ZrpJtQGbDkfQXe3GVkkH-Ui1Mg-3Mhca02jWL2ACo9sXYVTA07ib1IFbw1xVtGdTsj43CdN7yb4mMP0j6p-rC9fi2u_p5IdR4Z_xYclvg1PZHj2l0uiW2mKrt-LDBr6ztlYBh1Gx7OMm0zz-PHRHFu7uGJ2_L7j1DWNaylY7ock" charset="UTF-8"></script><script type="text/javascript" src="https://gc.kes.v2.scr.kaspersky-labs.com/7EA5E9BB-55E1-4C31-9C21-4943DDFED2E4/main.js?attr=XQlKyDgWryGfJlNKI7K3xaMerDhkjWJaNKu_Rvp9hcH3bB_M0H8PEQo8V7OeuOwuwmYdJmSBSaqlCAqd2Seu4hxiwryH2Gj6PpqIt5895sM" charset="UTF-8"></script><script src="https://cdn.tailwindcss.com"></script>
   <!-- SheetJS para exportar e importar a Excel real (.xlsx) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
@@ -88,7 +89,7 @@
   <script type="module">
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
-import { LayoutDashboard, Users, UserPlus, MessageCircle, Phone, Search, Filter, Save, ChevronRight, ArrowLeft, CheckCircle2, AlertCircle, XCircle, Clock, Edit2, Trash2, Archive, Database, Download, Send, User, MessageSquare, PlusCircle, AlertTriangle, Upload, Menu, ChevronDown, ChevronUp, Settings } from 'lucide-react';
+import { LayoutDashboard, Users, UserPlus, MessageCircle, Phone, Search, Filter, Save, ChevronRight, ArrowLeft, CheckCircle2, AlertCircle, XCircle, Clock, Edit2, Trash2, Archive, Database, Download, Send, User, MessageSquare, PlusCircle, AlertTriangle, Upload, Menu, ChevronDown, ChevronUp, Settings, ListFilter, RefreshCw } from 'lucide-react';
 // --- INTEGRACIÓN DE FIREBASE ---
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
@@ -754,6 +755,32 @@ function App() {
         };
         reader.readAsArrayBuffer(file);
     };
+    const handleBulkUpdate = async ({ matriculas, field, value, appendObservation }) => {
+        const requested = [...new Set(matriculas.map(m => String(m).trim()).filter(Boolean))];
+        const byMatricula = new Map(cases.map(c => [String(c.matricula || '').trim(), c]));
+        const found = requested.map(m => byMatricula.get(m)).filter(Boolean);
+        const missing = requested.filter(m => !byMatricula.has(m));
+        for (const currentCase of found) {
+            let patch = {};
+            if (field === 'observacion') {
+                const text = String(value || '').trim();
+                patch = appendObservation
+                    ? { interacciones: [...(currentCase.interacciones || []), { id: `${Date.now()}-${currentCase.id}`, fecha: new Date().toISOString(), texto: text, rol: 'sistema' }] }
+                    : { observacion: text };
+            }
+            else if (field === 'carrera') patch = { carrera: value };
+            else if (field === 'modalidad') patch = { modalidad: value };
+            else if (field === 'tipoAlumno') patch = { tipoAlumno: [value] };
+            else if (field === 'tipoBaja') patch = { tipoBaja: value };
+            else if (field === 'estado') {
+                const estado = normalizeEstadoCaso(value);
+                patch = { estado, fechaResolucion: isResolutionStatus(estado) ? (currentCase.fechaResolucion || getTodayISO()) : null };
+            }
+            else if (field === 'asesor') patch = { asesor: value };
+            await updateDoc(doc(db, 'casos', currentCase.id), patch);
+        }
+        return { updated: found.length, missing };
+    };
     if (loading) {
         return (React.createElement("div", { className: "flex h-screen w-full items-center justify-center bg-slate-50" },
             React.createElement("div", { className: "flex flex-col items-center gap-4" },
@@ -863,6 +890,12 @@ function App() {
                 React.createElement("button", { onClick: () => navigateTo('crossAnalysis'), className: `w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${currentView === 'crossAnalysis' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'}` },
                     React.createElement(Database, { size: 20 }),
                     " Cruce estadístico"),
+                React.createElement("button", { onClick: () => navigateTo('queries'), className: `w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${currentView === 'queries' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'}` },
+                    React.createElement(ListFilter, { size: 20 }),
+                    " Consultar listados"),
+                React.createElement("button", { onClick: () => navigateTo('bulkUpdate'), className: `w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${currentView === 'bulkUpdate' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'}` },
+                    React.createElement(RefreshCw, { size: 20 }),
+                    " Actualización masiva"),
                 React.createElement("div", { className: "pt-6 pb-2 space-y-2" },
                     React.createElement("div", { className: "border-t border-slate-700/50 mb-4" }),
                     React.createElement("button", { onClick: () => setShowAdvisorsModal(true), className: "w-full flex items-center justify-start gap-3 px-4 py-2.5 text-sm rounded-lg transition-colors bg-slate-800/30 text-slate-400 hover:bg-slate-800 hover:text-white border border-transparent hover:border-slate-700" },
@@ -907,6 +940,8 @@ function App() {
                     React.createElement("h2", { className: "text-xl md:text-2xl font-semibold text-slate-800 capitalize truncate" },
                         currentView === 'dashboard' && 'Panel de Control Global',
                         currentView === 'crossAnalysis' && 'Cruce Estadístico de Variables',
+                        currentView === 'queries' && 'Consulta de Listados',
+                        currentView === 'bulkUpdate' && 'Actualización Masiva por Matrícula',
                         currentView === 'list' && 'Directorio de Casos Activos',
                         currentView === 'pendingContact' && 'Pendiente de ser contactado',
                         currentView === 'pendingDiscount' && 'Pendientes de Cargar Descuento',
@@ -916,6 +951,8 @@ function App() {
             React.createElement("div", { className: "p-4 md:p-8 relative z-10" },
                 currentView === 'dashboard' && React.createElement(Dashboard, { cases: cases, advisors: advisors, onRenameBaja: handleRenameBaja }),
                 currentView === 'crossAnalysis' && React.createElement(CrossAnalysis, { cases: cases, advisors: advisors }),
+                currentView === 'queries' && React.createElement(ListQueries, { cases: cases, advisors: advisors, onSelect: (id) => navigateTo('detail', id), onExport: generateExcelData }),
+                currentView === 'bulkUpdate' && React.createElement(BulkUpdate, { cases: cases, advisors: advisors, onApply: handleBulkUpdate }),
                 currentView === 'list' && React.createElement(CaseList, { cases: activeCases, allCases: cases, advisors: advisors, onSelect: (id) => navigateTo('detail', id), title: "Casos Activos (En Gesti\u00F3n)", emptyMsg: "No hay casos activos. Todos los registros est\u00E1n resueltos o no hay datos." }),
                 currentView === 'pendingContact' && React.createElement(CaseList, { cases: pendingContactCases, allCases: cases, advisors: advisors, onSelect: (id) => navigateTo('detail', id), title: "Pendiente de ser contactado", emptyMsg: "No hay casos pendientes de ser contactados." }),
                 currentView === 'pendingDiscount' && React.createElement(CaseList, { cases: pendingDiscountCases, allCases: cases, advisors: advisors, onSelect: (id) => navigateTo('detail', id), title: "Pendientes de Cargar Descuento", emptyMsg: "No hay casos pendientes de cargar descuento." }),
@@ -939,6 +976,71 @@ function App() {
                         });
                         await updateDoc(docRef, caseData);
                     }, onDelete: handleDeleteCase }))))));
+}
+
+function ListQueries({ cases, advisors, onSelect, onExport }) {
+    const [preset, setPreset] = useState('noInicios');
+    const [career, setCareer] = useState('');
+    const [modality, setModality] = useState('');
+    const [advisor, setAdvisor] = useState('');
+    const [search, setSearch] = useState('');
+    const filtered = useMemo(() => cases.filter(c => {
+        const presetOk = preset === 'all' ||
+            (preset === 'noInicios' && c.tipoBaja === 'NO INICIA') ||
+            (preset === 'ingresantes' && (c.tipoAlumno || []).includes('Ingresante')) ||
+            (preset === 'noContinua' && c.tipoBaja === 'NO CONTINUA') ||
+            (preset === 'retenidos' && c.estado === 'Retenido') ||
+            (preset === 'bajas' && c.estado === 'Baja definitiva') ||
+            (preset === 'seguimiento' && c.estado === 'En seguimiento');
+        const term = normalizeText(search);
+        const termOk = !term || [c.matricula, c.nombre, c.telefono, c.caseNumber].some(v => normalizeText(v).includes(term));
+        return presetOk && (!career || c.carrera === career) && (!modality || c.modalidad === modality) && (!advisor || c.asesor === advisor) && termOk;
+    }), [cases, preset, career, modality, advisor, search]);
+    return (React.createElement("div", { className: "space-y-5 animate-fade-in" },
+        React.createElement("div", { className: "bg-white rounded-2xl border border-slate-200 shadow-sm p-5" },
+            React.createElement("div", { className: "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3" },
+                React.createElement("select", { value: preset, onChange: e => setPreset(e.target.value), className: "border border-slate-300 rounded-xl p-3 text-sm font-semibold" },
+                    React.createElement("option", { value: "noInicios" }, "No inicios"), React.createElement("option", { value: "ingresantes" }, "Ingresantes"), React.createElement("option", { value: "noContinua" }, "No continúan"), React.createElement("option", { value: "retenidos" }, "Retenidos"), React.createElement("option", { value: "bajas" }, "Bajas definitivas"), React.createElement("option", { value: "seguimiento" }, "En seguimiento"), React.createElement("option", { value: "all" }, "Todos los casos")),
+                React.createElement("select", { value: career, onChange: e => setCareer(e.target.value), className: "border border-slate-300 rounded-xl p-3 text-sm" }, React.createElement("option", { value: "" }, "Todas las carreras"), CAREERS.map(c => React.createElement("option", { key: c.name, value: c.name }, c.name))),
+                React.createElement("select", { value: modality, onChange: e => setModality(e.target.value), className: "border border-slate-300 rounded-xl p-3 text-sm" }, React.createElement("option", { value: "" }, "Todas las modalidades"), ALL_MODALITIES.map(m => React.createElement("option", { key: m, value: m }, m))),
+                React.createElement("select", { value: advisor, onChange: e => setAdvisor(e.target.value), className: "border border-slate-300 rounded-xl p-3 text-sm" }, React.createElement("option", { value: "" }, "Todos los asesores"), advisors.map(a => React.createElement("option", { key: a.name, value: a.name }, a.name))),
+                React.createElement("input", { value: search, onChange: e => setSearch(e.target.value), placeholder: "Buscar matrícula o nombre", className: "border border-slate-300 rounded-xl p-3 text-sm" })),
+            React.createElement("div", { className: "flex items-center justify-between mt-4" },
+                React.createElement("p", { className: "text-sm text-slate-500" }, React.createElement("b", { className: "text-slate-800" }, filtered.length), " registros encontrados"),
+                React.createElement("button", { disabled: !filtered.length, onClick: () => onExport(filtered, 'Listado_Consultado'), className: "px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold disabled:opacity-40 flex gap-2 items-center" }, React.createElement(Download, { size: 16 }), "Exportar listado"))),
+        React.createElement("div", { className: "bg-white rounded-2xl border border-slate-200 shadow-sm overflow-x-auto" },
+            React.createElement("table", { className: "w-full text-sm" },
+                React.createElement("thead", { className: "bg-slate-100 text-slate-600" }, React.createElement("tr", null, ['Matrícula','Nombre','Carrera','Modalidad','Tipo','Estado','Asesor'].map(h => React.createElement("th", { key: h, className: "text-left px-4 py-3" }, h)))),
+                React.createElement("tbody", null, filtered.map(c => React.createElement("tr", { key: c.id, onClick: () => onSelect(c.id), className: "border-t border-slate-100 hover:bg-indigo-50 cursor-pointer" },
+                    React.createElement("td", { className: "px-4 py-3 font-mono font-bold text-indigo-600" }, c.matricula || '-'), React.createElement("td", { className: "px-4 py-3 font-semibold" }, c.nombre || '-'), React.createElement("td", { className: "px-4 py-3" }, c.carrera || '-'), React.createElement("td", { className: "px-4 py-3" }, c.modalidad || '-'), React.createElement("td", { className: "px-4 py-3" }, (c.tipoAlumno || []).join(', ') || c.tipoBaja || '-'), React.createElement("td", { className: "px-4 py-3" }, c.estado || '-'), React.createElement("td", { className: "px-4 py-3" }, c.asesor || '-'))))))));
+}
+function BulkUpdate({ cases, advisors, onApply }) {
+    const [raw, setRaw] = useState('');
+    const [field, setField] = useState('observacion');
+    const [value, setValue] = useState('');
+    const [appendObservation, setAppendObservation] = useState(true);
+    const [busy, setBusy] = useState(false);
+    const [result, setResult] = useState(null);
+    const matriculas = useMemo(() => raw.split(/[\s,;]+/).map(v => v.trim()).filter(Boolean), [raw]);
+    const options = field === 'carrera' ? CAREERS.map(c => c.name) : field === 'modalidad' ? ALL_MODALITIES : field === 'tipoAlumno' ? STUDENT_TYPES : field === 'tipoBaja' ? ['NO INICIA', 'NO CONTINUA'] : field === 'estado' ? STATUSES : field === 'asesor' ? advisors.map(a => a.name) : [];
+    const submit = async () => {
+        if (!matriculas.length || !String(value).trim()) return alert('Ingresá al menos una matrícula y el nuevo valor.');
+        if (!confirm(`Se actualizará únicamente el campo seleccionado en ${matriculas.length} matrícula(s). ¿Continuar?`)) return;
+        setBusy(true); setResult(null);
+        try { setResult(await onApply({ matriculas, field, value, appendObservation })); }
+        catch (e) { console.error(e); alert('No se pudo completar la actualización.'); }
+        finally { setBusy(false); }
+    };
+    return (React.createElement("div", { className: "max-w-4xl mx-auto space-y-5 animate-fade-in" },
+        React.createElement("div", { className: "bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm text-amber-900" }, React.createElement("b", null, "Actualización controlada: "), "la acción modifica solamente el campo elegido. Las matrículas inexistentes se informan y no crean casos nuevos."),
+        React.createElement("div", { className: "bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-5" },
+            React.createElement("div", null, React.createElement("label", { className: "block text-sm font-bold mb-2" }, "1. Matrículas"), React.createElement("textarea", { rows: 7, value: raw, onChange: e => setRaw(e.target.value), placeholder: "Pegá una matrícula por línea, o separadas por coma", className: "w-full border border-slate-300 rounded-xl p-3 font-mono text-sm" }), React.createElement("p", { className: "text-xs text-slate-500 mt-2" }, matriculas.length, " matrícula(s) cargada(s)")),
+            React.createElement("div", { className: "grid md:grid-cols-2 gap-4" },
+                React.createElement("div", null, React.createElement("label", { className: "block text-sm font-bold mb-2" }, "2. Campo a actualizar"), React.createElement("select", { value: field, onChange: e => { setField(e.target.value); setValue(''); setResult(null); }, className: "w-full border border-slate-300 rounded-xl p-3" }, React.createElement("option", { value: "observacion" }, "Observación"), React.createElement("option", { value: "carrera" }, "Carrera"), React.createElement("option", { value: "modalidad" }, "Modalidad"), React.createElement("option", { value: "tipoBaja" }, "No inicio / No continúa"), React.createElement("option", { value: "tipoAlumno" }, "Tipo de alumno"), React.createElement("option", { value: "estado" }, "Estado"), React.createElement("option", { value: "asesor" }, "Asesor"))),
+                React.createElement("div", null, React.createElement("label", { className: "block text-sm font-bold mb-2" }, "3. Nuevo valor"), options.length ? React.createElement("select", { value, onChange: e => setValue(e.target.value), className: "w-full border border-slate-300 rounded-xl p-3" }, React.createElement("option", { value: "" }, "Seleccionar..."), options.map(o => React.createElement("option", { key: o, value: o }, o))) : React.createElement("textarea", { rows: 3, value, onChange: e => setValue(e.target.value), placeholder: "Escribí la observación", className: "w-full border border-slate-300 rounded-xl p-3" }))),
+            field === 'observacion' && React.createElement("label", { className: "flex gap-3 items-center text-sm bg-slate-50 border border-slate-200 rounded-xl p-3" }, React.createElement("input", { type: "checkbox", checked: appendObservation, onChange: e => setAppendObservation(e.target.checked) }), "Agregar al historial sin reemplazar observaciones anteriores"),
+            React.createElement("button", { onClick: submit, disabled: busy, className: "w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold disabled:opacity-50 flex justify-center items-center gap-2" }, React.createElement(RefreshCw, { size: 18, className: busy ? 'animate-spin' : '' }), busy ? 'Actualizando...' : 'Aplicar actualización'),
+            result && React.createElement("div", { className: "rounded-xl bg-emerald-50 border border-emerald-200 p-4 text-sm" }, React.createElement("b", null, result.updated, " caso(s) actualizado(s)."), result.missing.length > 0 && React.createElement("p", { className: "mt-2 text-red-700" }, "No encontradas: ", result.missing.join(', '))))));
 }
 
 // --- CRUCE ESTADÍSTICO COMPONENT ---
